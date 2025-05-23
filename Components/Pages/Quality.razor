@@ -1,0 +1,225 @@
+@page "/quality"
+@inject HttpClient HttpClient
+
+<MudMainContent Class="pt-16 px-4">
+    <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
+        🧪 Quality Information for Station: <strong>@(SelectedStation ?? "Đang tải...")</strong>
+    </MudText>
+
+    <MudSelect T="string"
+               @bind-Value="SelectedStation"
+               Dense="true"
+               Label="Chọn trạm"
+               Class="mb-4"
+               Style="width: 150px;">
+        @if (StationOptions.Count == 0)
+        {
+            <MudSelectItem T="string" Disabled="true">Đang tải...</MudSelectItem>
+        }
+        else
+        {
+            @foreach (var station in StationOptions)
+            {
+                <MudSelectItem Value="@station">@station</MudSelectItem>
+            }
+        }
+    </MudSelect>
+
+    @if (!string.IsNullOrEmpty(_errMsg))
+    {
+        <MudAlert Severity="Severity.Error">@_errMsg</MudAlert>
+    }
+
+    @if (isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Color="MudBlazor.Color.Primary" Size="MudBlazor.Size.Large"/>
+        <MudText Class="mt-2 text-muted">Đang tải thông tin công việc...</MudText>
+    }
+    else if (_runningJob != null)
+    {
+        <MudPaper Elevation="4" Class="p-4 mb-4">
+            <MudText Typo="Typo.h5" Class="mb-3">📋 Job & Quality Summary</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText><strong>Station:</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Secondary">@_runningJob.StationName</MudChip>
+                    </MudText>
+                    <MudText><strong>Product Code:</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Info">@_runningJob.ProductCode</MudChip>
+                    </MudText>
+                    <MudText><strong>Shift:</strong>
+                        <MudChip T="string" Color="@GetShiftColor(_runningJob.Shift)">@_runningJob.Shift</MudChip>
+                    </MudText>
+                    <MudText><strong>Job Status:</strong>
+                        <MudChip T="string"
+                                 Color="@GetJobStatusColor(_runningJob.JobStatus)">@_runningJob.JobStatus</MudChip>
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText><strong>Plan Quality</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Primary">@_runningJob.PlanQty.ToString("N0")</MudChip>
+                    </MudText>
+                    <MudText><strong>Actual Quality</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Success">@_runningJob.ActualQty</MudChip>
+                    </MudText>
+                    <MudText><strong>Defect Quality</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Error">@_runningJob.DefectQty</MudChip>
+                    </MudText>
+                    <MudText><strong>Performance (P):</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Success">@_performance.ToString("0.##")%</MudChip>
+                    </MudText>
+                    <MudText><strong>Quality (Q):</strong>
+                        <MudChip T="string" Color="MudBlazor.Color.Warning">@_quality.ToString("0.##")%</MudChip>
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else
+    {
+        <MudText Class="text-danger">Không có job nào đang chạy tại trạm này.</MudText>
+    }
+</MudMainContent>
+
+@code {
+    private string? _selectedStation;
+
+    private string? SelectedStation
+    {
+        get => _selectedStation;
+        set
+        {
+            if (_selectedStation != value)
+            {
+                _selectedStation = value;
+                if (_selectedStation != null)
+                {
+                    _ = LoadRunningJob(_selectedStation);
+                }
+            }
+        }
+    }
+
+    private List<string> StationOptions = new();
+    private RunningJob? _runningJob;
+    private double _performance;
+    private double _quality;
+    private string? _errMsg;
+    private bool isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStationOptions();
+        if (StationOptions.Any())
+        {
+            SelectedStation = StationOptions.First();
+        }
+    }
+
+    private async Task LoadStationOptions()
+    {
+        try
+        {
+            var result = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
+            if (result is not null && result.Any())
+            {
+                StationOptions = result.Select(s => s.StationCode).ToList();
+            }
+            else
+            {
+                StationOptions = new() { "HT09" };
+            }
+        }
+        catch
+        {
+            StationOptions = new() { "HT09" };
+            _errMsg = "Không thể tải danh sách trạm từ máy chủ.";
+        }
+    }
+
+    private async Task LoadRunningJob(string station)
+    {
+        try
+        {
+            isLoading = true;
+            _errMsg = null;
+            StateHasChanged();
+
+            var response = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+                _runningJob = JsonSerializer.Deserialize<RunningJob>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (_runningJob?.PlanQty > 0)
+                    _performance = CalculatePerformance(_runningJob.PlanQty, _runningJob.ActualQty);
+
+                if (_runningJob?.ActualQty > 0)
+                    _quality = CalculateQuality(_runningJob.ActualQty, _runningJob.DefectQty);
+                else
+                    _quality = 0;
+            }
+            else
+            {
+                _runningJob = null;
+                _errMsg = "Không thể tải dữ liệu job từ máy chủ.";
+            }
+        }
+        catch
+        {
+            _runningJob = null;
+            _errMsg = "Không thể tải dữ liệu từ máy chủ, vui lòng thử lại sau!";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private double CalculatePerformance(double planQty, double actualQty)
+        => planQty > 0 ? (actualQty / planQty) * 100 : 0;
+
+    private double CalculateQuality(double actualQty, double defectQty)
+        => actualQty > 0 ? ((actualQty - defectQty) / actualQty) * 100 : 0;
+
+    private MudBlazor.Color GetShiftColor(string shift) => shift switch
+    {
+        "Ca Sáng" => MudBlazor.Color.Primary,
+        "Ca Trưa" => MudBlazor.Color.Warning,
+        "Ca Chiều" => MudBlazor.Color.Secondary,
+        _ => MudBlazor.Color.Default
+    };
+
+    private MudBlazor.Color GetJobStatusColor(string status) => status switch
+    {
+        "Đang chờ" => MudBlazor.Color.Default,
+        "Đang chạy" => MudBlazor.Color.Success,
+        "Đã hoàn thành" => MudBlazor.Color.Info,
+        "Chưa xong" => MudBlazor.Color.Error,
+        _ => MudBlazor.Color.Dark
+    };
+
+    public class Station
+    {
+        public string StationCode { get; set; } = string.Empty;
+        public string StationName { get; set; } = string.Empty;
+    }
+
+    public class RunningJob
+    {
+        public required string StationCode { get; init; }
+        public required string StationName { get; init; }
+        public required string ProductCode { get; init; }
+        public required string JobStatus { get; init; }
+        public required string Shift { get; init; }
+        public double PlanQty { get; init; }
+        public double ActualQty { get; init; }
+        public double DefectQty { get; init; }
+        public double Oee { get; init; }
+    }
+
+}

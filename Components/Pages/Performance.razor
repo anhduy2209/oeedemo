@@ -1,0 +1,300 @@
+@page "/performance"
+@inject HttpClient HttpClient
+@using System.Text.Json
+
+<MudMainContent Class="pt-16 px-4">
+    <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
+        📈 Performance Overview -
+        <MudSelect T="string"
+                   @bind-Value="SelectedStation"
+                   Dense="true"
+                   Label="Chọn trạm"
+                   Class="ml-2 station-select">
+            @if (StationOptions.Count == 0)
+            {
+                <MudSelectItem T="string" Disabled="true">
+                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" Class="mr-2"/>
+                    Đang tải...
+                </MudSelectItem>
+            }
+            else
+            {
+                @foreach (var station in StationOptions)
+                {
+                    <MudSelectItem T="string" Value="@station">
+                        <MudIcon Icon="@Icons.Material.Filled.LocationOn" Class="mr-1 text-secondary"/>
+                        @station
+                    </MudSelectItem>
+                }
+            }
+        </MudSelect>
+    </MudText>
+
+    @if (isLoading)
+    {
+        <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true"/>
+        <MudText Class="mt-2 text-muted">Đang tải thông tin công việc...</MudText>
+    }
+    else if (runningJob != null)
+    {
+        <MudPaper Elevation="5" Class="p-4 my-5">
+            <MudText Typo="Typo.h6" Class="mb-3 text-muted">🚀 Job đang chạy</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText><b>📍 Trạm:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Default"
+                                 Variant="Variant.Filled">@runningJob.StationName</MudChip>
+                    </MudText>
+                    <MudText><b>📦 Mã SP:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Info"
+                                 Variant="Variant.Filled">@runningJob.ProductCode</MudChip>
+                    </MudText>
+                    <MudText><b>🕘 Ca:</b>
+                        <MudChip T="string" Color="@GetShiftColor(runningJob.Shift)"
+                                 Variant="Variant.Filled">@runningJob.Shift</MudChip>
+                    </MudText>
+                    <MudText><b>⚙️ Trạng thái:</b>
+                        <MudChip T="string" Color="@GetStatusColor(runningJob.JobStatus)"
+                                 Variant="Variant.Filled">@runningJob.JobStatus</MudChip>
+                    </MudText>
+                    <MudText><b>📅 Thời gian tạo:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Info"
+                                 Variant="Variant.Filled">@runningJob.CreatedTime.ToString("dd/MM/yyyy HH:mm")</MudChip>
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText><b>📋 Kế hoạch:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Primary" Variant="Variant.Filled">@runningJob.PlanQty</MudChip>
+                    </MudText>
+                    <MudText><b>✅ Thực tế:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Success"
+                                 Variant="Variant.Filled">@runningJob.ActualQty</MudChip>
+                    </MudText>
+                    <MudText><b>❌ Lỗi:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Error" Variant="Variant.Filled">@runningJob.DefectQty</MudChip>
+                    </MudText>
+                    <MudText><b>📊 OEE:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Secondary"
+                                 Variant="Variant.Filled">@runningJob.Oee.ToString("0.##")%
+                        </MudChip>
+                    </MudText>
+                    <MudText><b>⚡ Performance (P):</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Success" Variant="Variant.Filled">
+                            @_performanceDisplay
+                        </MudChip>
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else
+    {
+        <MudText Class="text-danger">Không có job nào đang chạy tại trạm này.</MudText>
+    }
+</MudMainContent>
+
+@code {
+    private string? _selectedStation;
+
+    private string? SelectedStation
+    {
+        get => _selectedStation;
+        set
+        {
+            if (_selectedStation != value)
+            {
+                _selectedStation = value;
+                if (_selectedStation != null)
+                {
+                    _ = LoadRunningJob(_selectedStation);
+                }
+            }
+        }
+    }
+
+    private List<string> StationOptions = new();
+    private RunningJob? runningJob;
+    private WorkingParameter? workingParameter;
+    private DowntimeEntry? downtimeEntry;
+    private double _performance;
+    private string _performanceDisplay = "Không đủ dữ liệu";
+    private bool isLoading = false;
+    private readonly double _totalAvailableTime = 480; // 8 giờ ca làm việc (phút)
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStationOptions();
+        if (StationOptions.Any())
+        {
+            SelectedStation = StationOptions.First();
+        }
+    }
+
+    private async Task LoadStationOptions()
+    {
+        try
+        {
+            var result = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
+            if (result is not null && result.Any())
+            {
+                StationOptions = result.Select(s => s.StationCode).ToList();
+            }
+            else
+            {
+                StationOptions = new() { "HT09" };
+            }
+        }
+        catch
+        {
+            StationOptions = new() { "HT09" };
+        }
+    }
+
+    private async Task LoadRunningJob(string station)
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            // Reset dữ liệu
+            runningJob = null;
+            workingParameter = null;
+            downtimeEntry = null;
+            _performance = 0;
+            _performanceDisplay = "Không đủ dữ liệu";
+
+            // Lấy dữ liệu job
+            var jobResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
+            if (jobResponse.IsSuccessStatusCode)
+            {
+                var jobJson = await jobResponse.Content.ReadAsStringAsync();
+                runningJob = JsonSerializer.Deserialize<RunningJob>(jobJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (runningJob != null)
+                {
+                    // Lấy dữ liệu working parameter
+                    var productCode = string.IsNullOrEmpty(runningJob.ProductCode) ? "LIGHTBLAZE_A-JS0913" : runningJob.ProductCode;
+                    var paramResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/WorkingParameter?station={station}&product={productCode}");
+                    if (paramResponse.IsSuccessStatusCode)
+                    {
+                        var paramJson = await paramResponse.Content.ReadAsStringAsync();
+                        workingParameter = JsonSerializer.Deserialize<WorkingParameter>(paramJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+
+                    // Lấy dữ liệu downtime
+                    var downtimeResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}");
+                    if (downtimeResponse.IsSuccessStatusCode)
+                    {
+                        var downtimeJson = await downtimeResponse.Content.ReadAsStringAsync();
+                        var downtimeEntries = JsonSerializer.Deserialize<List<DowntimeEntry>>(downtimeJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        downtimeEntry = downtimeEntries?.FirstOrDefault();
+                    }
+
+                    // Tính Performance
+                    if (runningJob.ActualQty > 0 && workingParameter != null && workingParameter.TaktTime > 0)
+                    {
+                        // Tính Operating Time
+                        double lossTimeMinutes = 0;
+                        if (downtimeEntry != null && TimeSpan.TryParse(downtimeEntry.LossTime, out var lossTime))
+                        {
+                            lossTimeMinutes = lossTime.TotalMinutes;
+                        }
+
+                        double operatingTime = _totalAvailableTime - lossTimeMinutes;
+
+                        // Tính Ideal Output
+                        double idealOutput = (operatingTime * 60) / workingParameter.TaktTime; // TaktTime là giây/sản phẩm
+
+                        // Tính Performance
+                        _performance = (runningJob.ActualQty / idealOutput) * 100;
+                        _performanceDisplay = _performance.ToString("0.##") + "%";
+                    }
+                    else if (runningJob.PlanQty > 0)
+                    {
+                        // Fallback: Sử dụng PlanQty nếu không có TaktTime
+                        _performance = (runningJob.ActualQty / runningJob.PlanQty) * 100;
+                        _performanceDisplay = _performance.ToString("0.##") + "%";
+                    }
+                }
+            }
+        }
+        catch
+        {
+            runningJob = null;
+            _performanceDisplay = "Lỗi tải dữ liệu";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private MudBlazor.Color GetShiftColor(string shift) => shift switch
+    {
+        "Ca Sáng" => MudBlazor.Color.Primary,
+        "Ca Trưa" => MudBlazor.Color.Warning,
+        "Ca Chiều" => MudBlazor.Color.Dark,
+        _ => MudBlazor.Color.Secondary
+    };
+
+    private MudBlazor.Color GetStatusColor(string status) => status switch
+    {
+        "Đang chờ" => MudBlazor.Color.Secondary,
+        "Đang chạy" => MudBlazor.Color.Success,
+        "Đã hoàn thành" => MudBlazor.Color.Info,
+        "Chưa xong" => MudBlazor.Color.Error,
+        _ => MudBlazor.Color.Dark
+    };
+
+    public class Station
+    {
+        public required string StationCode { get; set; }
+        public required string StationName { get; set; }
+    }
+
+    public class RunningJob
+    {
+        public required string StationCode { get; init; }
+        public required string StationName { get; init; }
+        public required string ProductCode { get; init; }
+        public required string JobStatus { get; init; }
+        public required string Shift { get; init; }
+        public DateTimeOffset CreatedTime { get; init; }
+        public double PlanQty { get; init; }
+        public double ActualQty { get; init; }
+        public double DefectQty { get; init; }
+        public double Oee { get; init; }
+    }
+
+    public class WorkingParameter
+    {
+        public List<object> Tools { get; init; } = new();
+        public required string StationCode { get; init; }
+        public required string ProductCode { get; init; }
+        public required string ComponentCode { get; init; }
+        public double DefaultQtyPerSignal { get; init; }
+        public double StandardCycle { get; init; }
+        public double TaktTime { get; init; }
+        public double ProductPerHour { get; init; }
+        public double DefaultQtyPerShift { get; init; }
+        public double StandardOee { get; init; }
+        public int StopMeaningTime { get; init; }
+        public List<object> CheckList { get; init; } = new();
+        public int ChangeOverTime { get; init; }
+    }
+
+    public class DowntimeEntry
+    {
+        public required string Id { get; set; }
+        public required string StationCode { get; set; }
+        public required string DowntimeCode { get; set; }
+        public required string StartTime { get; set; }
+        public required string EndTime { get; set; }
+        public required string Status { get; set; }
+        public required string LossTime { get; set; }
+    }
+}

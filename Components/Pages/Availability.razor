@@ -1,0 +1,283 @@
+@page "/availability"
+@inject HttpClient HttpClient
+@using Timer = System.Timers.Timer
+@implements IDisposable
+
+<MudMainContent Class="pt-16 px-4">
+    <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
+        📊 OEE Availability Station: <strong>@(_selectedStation ?? "Đang tải...")</strong>
+        <MudSelect T="string"
+                   @bind-Value="_selectedStation"
+                   Dense="true"
+                   Label="Chọn trạm"
+                   Class="ml-2">
+            @if (_stations == null || _stations.Count == 0)
+            {
+                <MudSelectItem T="string" Disabled="true">Đang tải...</MudSelectItem>
+            }
+            else
+            {
+                @foreach (var station in _stations)
+                {
+                    <MudSelectItem Value="@station.StationCode">@station.StationName</MudSelectItem>
+                }
+            }
+        </MudSelect>
+    </MudText>
+
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <MudAlert Severity="Severity.Success" Elevation="1" Dense="true" Dismissable="true">
+            @_statusMessage
+        </MudAlert>
+    }
+
+    @if (_isLoadingDowntime)
+    {
+        <MudProgressCircular Indeterminate="true" Color="MudBlazor.Color.Primary"/>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Đang tải dữ liệu downtime...</MudText>
+    }
+    else if (_downtimeEntries == null || _downtimeEntries.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">Không có dữ liệu downtime cho trạm này.</MudAlert>
+    }
+    else
+    {
+        <MudCard Class="mt-4">
+            <MudCardContent>
+                <MudText Typo="Typo.subtitle2" Class="mb-3 text-secondary">Chi tiết downtime</MudText>
+
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudText><b>Bắt đầu:</b></MudText>
+                        <MudChip T="string"
+                                 Color="MudBlazor.Color.Default">@FormatDateTime(_downtimeEntries[0].StartTime)</MudChip>
+
+                        <MudText Class="mt-3"><b>Kết thúc:</b></MudText>
+                        <MudChip T="string" Color="MudBlazor.Color.Default">@FormatDateTime(_downtimeEntries[0].EndTime)</MudChip>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudText><b>Loss Time:</b></MudText>
+                        <MudChip T="string" Color="MudBlazor.Color.Warning">@FormatTotalLossTime(_totalLossTime)</MudChip>
+
+                        <MudText Class="mt-3"><b>Availability:</b></MudText>
+                        <MudChip T="string" Color="MudBlazor.Color.Success">@_availability.ToString("0.##")%</MudChip>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4"/>
+
+                <MudText><b>Trạng thái:</b></MudText>
+                <MudChip T="string" Color="@GetChipColor(GetStatusText())">@GetStatusText()</MudChip>
+                <MudText Class="ml-2">@GetStatusEmoji()</MudText>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudMainContent>
+
+@code {
+    private List<Station> _stations = new();
+    private List<DowntimeEntry> _downtimeEntries = new();
+    private readonly double _totalAvailableTime = 480;
+    private double _totalLossTime = 0;
+    private double _availability;
+    private bool _isLoadingDowntime = false;
+
+    private string? _selectedStation;
+
+    private string? SelectedStation
+    {
+        get => _selectedStation;
+        set
+        {
+            if (_selectedStation != value)
+            {
+                _selectedStation = value;
+                if (_selectedStation != null)
+                {
+                    _ = LoadDowntimeDataAsync(_selectedStation);
+                    ShowStatus($"Đã tải dữ liệu cho trạm {_selectedStation}");
+                }
+            }
+        }
+    }
+
+    private Timer _refreshTimer = null!;
+    private string? _statusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStationsAsync();
+        if (_stations.Any())
+        {
+            SelectedStation = _stations.First().StationCode;
+        }
+
+        _refreshTimer = new Timer(1000);
+        _refreshTimer.Elapsed += UpdateLossTime;
+        _refreshTimer.AutoReset = true;
+        _refreshTimer.Enabled = true;
+    }
+
+    private async Task LoadStationsAsync()
+    {
+        try
+        {
+            var response = await HttpClient.GetAsync("https://demo-hwaseung.spiderock.xyz/api/Station/All");
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<List<Station>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (result != null)
+                    _stations = result;
+                else
+                    _stations = new() { new Station { StationCode = "HT09", StationName = "HT09" } };
+            }
+            else
+            {
+                _stations = new() { new Station { StationCode = "HT09", StationName = "HT09" } };
+            }
+        }
+        catch (Exception ex)
+        {
+            _stations = new() { new Station { StationCode = "HT09", StationName = "HT09" } };
+            await Console.Error.WriteLineAsync($"Lỗi tải station: {ex.Message}");
+        }
+    }
+
+    private async Task LoadDowntimeDataAsync(string stationCode)
+    {
+        _isLoadingDowntime = true;
+        _downtimeEntries = new();
+        _availability = 0;
+        _totalLossTime = 0;
+
+        try
+        {
+            var response = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={stationCode}");
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var entries = JsonSerializer.Deserialize<List<DowntimeEntry>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (entries != null)
+                {
+                    _downtimeEntries = entries;
+
+                    if (_downtimeEntries.Count > 0)
+                    {
+                        _totalLossTime = _downtimeEntries.Sum(entry =>
+                        {
+                            if (TimeSpan.TryParse(entry.LossTime, out var loss))
+                                return loss.TotalMinutes;
+                            return 0;
+                        });
+
+                        _availability = CalculateAvailability(_totalAvailableTime, _totalLossTime);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"Lỗi tải dữ liệu downtime: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingDowntime = false;
+            StateHasChanged();
+        }
+    }
+
+    private void UpdateLossTime(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        if (_downtimeEntries.Count > 0 && GetStatusText() == "Stopping")
+        {
+            var downtimeEntry = _downtimeEntries[0];
+
+            if (DateTime.TryParse(downtimeEntry.StartTime, out var startTime))
+            {
+                var elapsedTime = DateTime.Now - startTime;
+                _totalLossTime = elapsedTime.TotalMinutes;
+                _availability = CalculateAvailability(_totalAvailableTime, _totalLossTime);
+
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void ShowStatus(string msg)
+    {
+        _statusMessage = msg;
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            _statusMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private string FormatTotalLossTime(double totalLossMinutes)
+    {
+        var ts = TimeSpan.FromMinutes(totalLossMinutes);
+        return $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+    }
+
+    private double CalculateAvailability(double totalAvailableTime, double lossTime)
+    {
+        return totalAvailableTime > 0 ? (totalAvailableTime - lossTime) / totalAvailableTime * 100 : 0;
+    }
+
+    private MudBlazor.Color GetChipColor(string status) => status switch
+    {
+        "Stopping" => MudBlazor.Color.Error,
+        "Pausing" => MudBlazor.Color.Warning,
+        "Running" => MudBlazor.Color.Success,
+        _ => MudBlazor.Color.Default
+    };
+
+    private string GetStatusText()
+    {
+        return _downtimeEntries.Count > 0 ? _downtimeEntries[0].Status : "Running";
+    }
+
+    private string GetStatusEmoji()
+    {
+        return GetStatusText() switch
+        {
+            "Running" => "✅",
+            "Stopping" => "🛑",
+            "Pausing" => "⏸️",
+            _ => "⚙️"
+        };
+    }
+
+    private string FormatDateTime(string dateTimeString)
+    {
+        return DateTime.TryParse(dateTimeString, out var dt)
+            ? dt.ToString("dd/MM/yy HH:mm")
+            : dateTimeString;
+    }
+
+    public class DowntimeEntry
+    {
+        public required string Id { get; set; }
+        public required string StationCode { get; set; }
+        public required string DowntimeCode { get; set; }
+        public required string StartTime { get; set; }
+        public required string EndTime { get; set; }
+        public required string Status { get; set; }
+        public required string LossTime { get; set; }
+    }
+
+    public class Station
+    {
+        public required string StationCode { get; set; }
+        public required string StationName { get; set; }
+    }
+
+}
