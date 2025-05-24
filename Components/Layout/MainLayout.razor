@@ -6,7 +6,6 @@
 <MudPopoverProvider />
 
 <MudLayout>
-
     <MudDrawer @bind-Open="_drawerOpen"
                Variant="DrawerVariant.Responsive"
                Breakpoint="Breakpoint.Md"
@@ -18,7 +17,7 @@
     </MudDrawer>
 
     <MudMainContent Class="@(_drawerOpen ? "main-open" : "main-closed")">
-        <MudAppBar Color="MudBlazor.Color.Primary" Elevation="4">
+        <MudAppBar Color="MudBlazor.Color.Tertiary" Elevation="4">
             <MudIconButton Icon="@Icons.Material.Filled.Menu"
                            OnClick="@DrawerToggle"
                            Edge="Edge.Start"
@@ -30,7 +29,6 @@
             @Body
         </div>
     </MudMainContent>
-
 </MudLayout>
 
 @code {

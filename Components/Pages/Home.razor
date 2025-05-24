@@ -1,541 +1,728 @@
-﻿@page "/"
-@inject HttpClient HttpClient
-@inject IJSRuntime Js
-@implements IAsyncDisposable
+﻿@* @page "/" *@
+@* @inject HttpClient HttpClient *@
+@* @inject IJSRuntime Js *@
+@* @implements IAsyncDisposable *@
+@* *@
+@* <MudMainContent Class="pt-16 px-4"> *@
+@*     <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6"> *@
+@*         📊 OEE Dashboard -  *@
+@*         <MudSelect T="string" *@
+@*                    @bind-Value="SelectedStation" *@
+@*                    Dense="true" *@
+@*                    Label="Chọn trạm" *@
+@*                    Class="ml-2"> *@
+@*             @if (StationOptions.Count == 0) *@
+@*             { *@
+@*                 <MudSelectItem T="string" Disabled="true"> *@
+@*                     <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" Class="mr-2" /> *@
+@*                     Đang tải... *@
+@*                 </MudSelectItem> *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 @foreach (var station in StationOptions) *@
+@*                 { *@
+@*                     <MudSelectItem T="string" Value="@station.StationCode">@station.StationName</MudSelectItem> *@
+@*                 } *@
+@*             } *@
+@*         </MudSelect> *@
+@*     </MudText> *@
+@* *@
+@*     @if (isLoading) *@
+@*     { *@
+@*         <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" /> *@
+@*         <MudText Class="mt-2 text-muted">Đang tải dữ liệu...</MudText> *@
+@*     } *@
+@*     else if (_errorMessage != null) *@
+@*     { *@
+@*         <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert> *@
+@*     } *@
+@*     else *@
+@*     { *@
+@*         <MudGrid> *@
+@*             <!-- KPI Cards --> *@
+@*             <MudItem xs="12" md="4"> *@
+@*                 <MudCard Elevation="5" Class="p-4"> *@
+@*                     <MudText Typo="Typo.h6" Class="mb-3 text-muted">📈 Chỉ số OEE</MudText> *@
+@*                     <MudGrid> *@
+@*                         <MudItem xs="12"> *@
+@*                             <MudText><b>OEE:</b></MudText> *@
+@*                             <MudChip T="string" Color="MudBlazor.Color.Primary" Variant="Variant.Filled">@_oeeDisplay</MudChip> *@
+@*                         </MudItem> *@
+@*                         <MudItem xs="12"> *@
+@*                             <MudText><b>Availability:</b></MudText> *@
+@*                             <MudChip T="string" Color="MudBlazor.Color.Success" Variant="Variant.Filled">@_availabilityDisplay</MudChip> *@
+@*                         </MudItem> *@
+@*                         <MudItem xs="12"> *@
+@*                             <MudText><b>Performance:</b></MudText> *@
+@*                             <MudChip T="string" Color="MudBlazor.Color.Info" Variant="Variant.Filled">@_performanceDisplay</MudChip> *@
+@*                         </MudItem> *@
+@*                         <MudItem xs="12"> *@
+@*                             <MudText><b>Quality:</b></MudText> *@
+@*                             <MudChip T="string" Color="MudBlazor.Color.Secondary" Variant="Variant.Filled">@_qualityDisplay</MudChip> *@
+@*                         </MudItem> *@
+@*                     </MudGrid> *@
+@*                 </MudCard> *@
+@*             </MudItem> *@
+@* *@
+@*             <!-- Job Details --> *@
+@*             <MudItem xs="12" md="4"> *@
+@*                 <MudCard Elevation="5" Class="p-4"> *@
+@*                     <MudText Typo="Typo.h6" Class="mb-3 text-muted">🚀 Chi tiết Job</MudText> *@
+@*                     @if (runningJob != null) *@
+@*                     { *@
+@*                         <MudGrid> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>📍 Trạm:</b> <MudChip T="string" Color="MudBlazor.Color.Default">@runningJob.StationName</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>📦 Sản phẩm:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@(runningJob.ProductCode ?? "N/A")</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>🕘 Ca:</b> <MudChip T="string" Color="@GetShiftColor(runningJob.Shift)">@runningJob.Shift</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>⚙️ Trạng thái:</b> <MudChip T="string" Color="@GetStatusColor(runningJob.JobStatus)">@runningJob.JobStatus</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>📋 Kế hoạch:</b> <MudChip T="string" Color="MudBlazor.Color.Primary">@runningJob.PlanQty</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>✅ Thực tế:</b> <MudChip T="string" Color="MudBlazor.Color.Success">@runningJob.ActualQty</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>❌ Lỗi:</b> <MudChip T="string" Color="MudBlazor.Color.Error">@runningJob.DefectQty (@(defectCode?.DefectName ?? "N/A"))</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                         </MudGrid> *@
+@*                     } *@
+@*                     else *@
+@*                     { *@
+@*                         <MudText>Không có job đang chạy.</MudText> *@
+@*                     } *@
+@*                 </MudCard> *@
+@*             </MudItem> *@
+@* *@
+@*             <!-- Downtime Info --> *@
+@*             <MudItem xs="12" md="4"> *@
+@*                 <MudCard Elevation="5" Class="p-4"> *@
+@*                     <MudText Typo="Typo.h6" Class="mb-3 text-muted">🛑 Thông tin Downtime</MudText> *@
+@*                     @if (downtimeEntry != null) *@
+@*                     { *@
+@*                         <MudGrid> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>🕒 Loss Time:</b> <MudChip T="string" Color="MudBlazor.Color.Warning">@downtimeEntry.LossTime</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>📌 Mã Downtime:</b> <MudChip T="string" Color="MudBlazor.Color.Default">@(downtimeCode?.DowntimeName ?? downtimeEntry.DowntimeCode)</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>⏰ Bắt đầu:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@FormatDateTime(downtimeEntry.StartTime)</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>🏁 Kết thúc:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@FormatDateTime(downtimeEntry.EndTime)</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="12"> *@
+@*                                 <MudText><b>🔄 Trạng thái:</b> <MudChip T="string" Color="@GetDowntimeStatusColor(downtimeEntry.Status)">@downtimeEntry.Status</MudChip></MudText> *@
+@*                             </MudItem> *@
+@*                         </MudGrid> *@
+@*                     } *@
+@*                     else *@
+@*                     { *@
+@*                         <MudText>Không có dữ liệu downtime.</MudText> *@
+@*                     } *@
+@*                 </MudCard> *@
+@*             </MudItem> *@
+@* *@
+@*             <!-- Charts --> *@
+@*             <MudItem xs="12" md="6"> *@
+@*                 <MudCard Elevation="5" Class="p-4"> *@
+@*                     <MudText Typo="Typo.h6" Class="mb-3 text-muted">📊 Biểu đồ OEE</MudText> *@
+@*                     <div id="barChart" style="min-height: 250px;"></div> *@
+@*                 </MudCard> *@
+@*             </MudItem> *@
+@*             <MudItem xs="12" md="6"> *@
+@*                 <MudCard Elevation="5" Class="p-4"> *@
+@*                     <MudText Typo="Typo.h6" class="mb-3 text-muted">🍩 Phân bổ OEE</MudText> *@
+@*                     <div id="donutChart" style="min-height: 250px;"></div> *@
+@*                 </MudCard> *@
+@*             </MudItem> *@
+@*         </MudGrid> *@
+@*     } *@
+@* </MudMainContent> *@
+@* *@
+@* @code { *@
+@*     private string? _selectedStation; *@
+@*     private string? SelectedStation *@
+@*     { *@
+@*         get => _selectedStation; *@
+@*         set *@
+@*         { *@
+@*             if (_selectedStation != value) *@
+@*             { *@
+@*                 _selectedStation = value; *@
+@*                 if (_selectedStation != null) *@
+@*                 { *@
+@*                     _ = LoadDashboardData(_selectedStation); *@
+@*                 } *@
+@*             } *@
+@*         } *@
+@*     } *@
+@*     private List<StationModel> StationOptions = new(); *@
+@*     private RunningJobModel? runningJob; *@
+@*     private WorkingParameterModel? workingParameter; *@
+@*     private DowntimeEntryModel? downtimeEntry; *@
+@*     private DowntimeCodeModel? downtimeCode; *@
+@*     private DefectCodeModel? defectCode; *@
+@*     private double _availability; *@
+@*     private double _performance; *@
+@*     private double _quality; *@
+@*     private double _oee; *@
+@*     private string _availabilityDisplay = "Không đủ dữ liệu"; *@
+@*     private string _performanceDisplay = "Không đủ dữ liệu"; *@
+@*     private string _qualityDisplay = "Không đủ dữ liệu"; *@
+@*     private string _oeeDisplay = "Không đủ dữ liệu"; *@
+@*     private string? _errorMessage; *@
+@*     private bool isLoading = false; *@
+@*     private readonly double _totalAvailableTime = 480; // 8 giờ ca làm việc (phút) *@
+@*     private IJSObjectReference? _barChartRef; *@
+@*     private IJSObjectReference? _donutChartRef; *@
+@* *@
+@*     protected override async Task OnInitializedAsync() *@
+@*     { *@
+@*         await LoadStations(); *@
+@*     } *@
+@* *@
+@*     protected override async Task OnAfterRenderAsync(bool firstRender) *@
+@*     { *@
+@*         if (firstRender && !isLoading && !string.IsNullOrEmpty(_selectedStation)) *@
+@*         { *@
+@*             await UpdateCharts(); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private async Task LoadStations() *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             isLoading = true; *@
+@*             _errorMessage = null; *@
+@* *@
+@*             var response = await HttpClient.GetAsync("https://demo-hwaseung.spiderock.xyz/api/Station/All"); *@
+@*             if (response.IsSuccessStatusCode) *@
+@*             { *@
+@*                 var json = await response.Content.ReadAsStringAsync(); *@
+@*                 StationOptions = JsonSerializer.Deserialize<List<StationModel>>(json) ?? new List<StationModel>(); *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 _errorMessage = $"Lỗi tải danh sách trạm: {response.StatusCode}"; *@
+@*             } *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             _errorMessage = $"Lỗi tải danh sách trạm: {ex.Message}"; *@
+@*         } *@
+@*         finally *@
+@*         { *@
+@*             isLoading = false; *@
+@*             StateHasChanged(); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private async Task LoadDashboardData(string station) *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             isLoading = true; *@
+@*             _errorMessage = null; *@
+@* *@
+@*             // 1. Lấy job đang chạy *@
+@*             var jobResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}"); *@
+@*             if (!jobResponse.IsSuccessStatusCode) *@
+@*             { *@
+@*                 _errorMessage = $"Lỗi tải job: {jobResponse.StatusCode}"; *@
+@*                 return; *@
+@*             } *@
+@*             var jobJson = await jobResponse.Content.ReadAsStringAsync(); *@
+@*             runningJob = JsonSerializer.Deserialize<RunningJobModel>(jobJson); *@
+@* *@
+@*             // 2. Lấy thông số working *@
+@*             var productCode = string.IsNullOrEmpty(runningJob.ProductCode) ? "LIGHTBLAZE_A-JS0913" : runningJob.ProductCode; *@
+@*             var workingResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/WorkingParameter?station={station}&product={productCode}"); *@
+@*             if (!workingResponse.IsSuccessStatusCode) *@
+@*             { *@
+@*                 _errorMessage = $"Lỗi tải thông số làm việc: {workingResponse.StatusCode}"; *@
+@*                 return; *@
+@*             } *@
+@*             var workingJson = await workingResponse.Content.ReadAsStringAsync(); *@
+@*             workingParameter = JsonSerializer.Deserialize<WorkingParameterModel>(workingJson); *@
+@* *@
+@*             // 3. Lấy thông tin downtime mới nhất *@
+@*             var downtimeResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeCode/All"); *@
+@*             if (!downtimeResponse.IsSuccessStatusCode) *@
+@*             { *@
+@*                 _errorMessage = $"Lỗi tải downtime: {downtimeResponse.StatusCode}"; *@
+@*                 return; *@
+@*             } *@
+@*             var downtimeJson = await downtimeResponse.Content.ReadAsStringAsync(); *@
+@*             downtimeEntry = JsonSerializer.Deserialize<DowntimeEntryModel>(downtimeJson); *@
+@* *@
+@*             // 4. Lấy thông tin downtime code *@
+@*             if (downtimeEntry != null) *@
+@*             { *@
+@*                 var downtimeCodeResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}"); *@
+@*                 if (downtimeCodeResponse.IsSuccessStatusCode) *@
+@*                 { *@
+@*                     var downtimeCodeJson = await downtimeCodeResponse.Content.ReadAsStringAsync(); *@
+@*                     downtimeCode = JsonSerializer.Deserialize<DowntimeCodeModel>(downtimeCodeJson); *@
+@*                 } *@
+@*             } *@
+@* *@
+@*             // 5. Lấy defect code (lấy defect code đầu tiên trong danh sách nếu có) *@
+@*             if (runningJob?.DefectQty > 0) *@
+@*             { *@
+@*                 var defectResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DefectCode/All"); *@
+@*                 if (defectResponse.IsSuccessStatusCode) *@
+@*                 { *@
+@*                     var defectJson = await defectResponse.Content.ReadAsStringAsync(); *@
+@*                     var defectCodes = JsonSerializer.Deserialize<List<DefectCodeModel>>(defectJson); *@
+@*                     defectCode = defectCodes?.FirstOrDefault(); *@
+@*                 } *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 defectCode = null; *@
+@*             } *@
+@* *@
+@*             CalculateKPIs(); *@
+@* *@
+@*             await UpdateCharts(); *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             _errorMessage = $"Lỗi tải dữ liệu dashboard: {ex.Message}"; *@
+@*         } *@
+@*         finally *@
+@*         { *@
+@*             isLoading = false; *@
+@*             await InvokeAsync(StateHasChanged); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private void CalculateKPIs() *@
+@*     { *@
+@*         if (runningJob == null || workingParameter == null) *@
+@*         { *@
+@*             _availabilityDisplay = "Không đủ dữ liệu"; *@
+@*             _performanceDisplay = "Không đủ dữ liệu"; *@
+@*             _qualityDisplay = "Không đủ dữ liệu"; *@
+@*             _oeeDisplay = "Không đủ dữ liệu"; *@
+@*             return; *@
+@*         } *@
+@* *@
+@*         // Thời gian downtime (loss time) theo phút *@
+@*         double lossTimeMinutes = downtimeEntry?.LossTime ?? 0; *@
+@* *@
+@*         // Availability = (Thời gian khả dụng thực tế) / (Tổng thời gian) *@
+@*         double availableTime = _totalAvailableTime - lossTimeMinutes; *@
+@*         _availability = availableTime / _totalAvailableTime; *@
+@*         _availabilityDisplay = (_availability * 100).ToString("0.##") + "%"; *@
+@* *@
+@*         // Performance = (Thực tế / Sản lượng lý tưởng) * 100% *@
+@*         if (runningJob != null && runningJob.ActualQty > 0 && workingParameter.TaktTime > 0) *@
+@*         { *@
+@*             double operatingTime = availableTime; *@
+@*             double idealOutput = (operatingTime * 60) / workingParameter.TaktTime; // TaktTime: giây/sản phẩm *@
+@*             if (idealOutput > 0) *@
+@*             { *@
+@*                 _performance = (runningJob.ActualQty / idealOutput); *@
+@*                 _performanceDisplay = (_performance * 100).ToString("0.##") + "%"; *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 _performanceDisplay = "Không đủ dữ liệu"; *@
+@*             } *@
+@*         } *@
+@*         else if (runningJob?.ActualQty > 0 && runningJob?.PlanQty > 0) *@
+@*         { *@
+@*             _performance = (double)runningJob.ActualQty / runningJob.PlanQty.Value; *@
+@*             _performanceDisplay = (_performance * 100).ToString("0.##") + "%"; *@
+@*         } *@
+@* *@
+@*         else *@
+@*         { *@
+@*             _performanceDisplay = "Không đủ dữ liệu"; *@
+@*         } *@
+@* *@
+@*         // Quality = (Sản lượng tốt / Thực tế) * 100% *@
+@*         if (runningJob.ActualQty > 0) *@
+@*         { *@
+@*             double goodQty = runningJob.ActualQty - runningJob.DefectQty; *@
+@*             _quality = goodQty / runningJob.ActualQty; *@
+@*             _qualityDisplay = (_quality * 100).ToString("0.##") + "%"; *@
+@*         } *@
+@*         else *@
+@*         { *@
+@*             _qualityDisplay = "Không đủ dữ liệu"; *@
+@*         } *@
+@* *@
+@*         // OEE = Availability * Performance * Quality *@
+@*         _oee = _availability * _performance * _quality; *@
+@*         _oeeDisplay = (_oee * 100).ToString("0.##") + "%"; *@
+@*     } *@
+@* *@
+@*     private async Task UpdateCharts() *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             // Dispose existing charts if any *@
+@*             if (_barChartRef != null) *@
+@*             { *@
+@*                 await _barChartRef.DisposeAsync(); *@
+@*                 _barChartRef = null; *@
+@*             } *@
+@*             if (_donutChartRef != null) *@
+@*             { *@
+@*                 await _donutChartRef.DisposeAsync(); *@
+@*                 _donutChartRef = null; *@
+@*             } *@
+@* *@
+@*             // Wait for ApexCharts to be available *@
+@*             await Js.InvokeVoidAsync("eval", "if (typeof ApexCharts === 'undefined') { throw new Error('ApexCharts not loaded'); }"); *@
+@* *@
+@*             // Bar Chart *@
+@*             var barOptions = new *@
+@*             { *@
+@*                 series = new[] *@
+@*                 { *@
+@*                     new { name = "OEE", data = new[] { _oee * 100 } }, *@
+@*                     new { name = "Availability", data = new[] { _availability * 100 } }, *@
+@*                     new { name = "Performance", data = new[] { _performance * 100 } }, *@
+@*                     new { name = "Quality", data = new[] { _quality * 100 } } *@
+@*                 }, *@
+@*                 chart = new *@
+@*                 { *@
+@*                     type = "bar", *@
+@*                     height = 250, *@
+@*                     toolbar = new { show = false } *@
+@*                 }, *@
+@*                 plotOptions = new *@
+@*                 { *@
+@*                     bar = new *@
+@*                     { *@
+@*                         horizontal = false, *@
+@*                         columnWidth = "55%", *@
+@*                         endingShape = "rounded" *@
+@*                     } *@
+@*                 }, *@
+@*                 dataLabels = new { enabled = false }, *@
+@*                 stroke = new { show = true, width = 2, colors = new[] { "transparent" } }, *@
+@*                 xaxis = new { categories = new[] { "Metrics" } }, *@
+@*                 yaxis = new { title = new { text = "Percentage (%)" } }, *@
+@*                 fill = new { opacity = 1 }, *@
+@*                 tooltip = new *@
+@*                 { *@
+@*                     y = new { formatter = "function(val) { return val.toFixed(2) + '%' }" } *@
+@*                 } *@
+@*             }; *@
+@* *@
+@*             // Donut Chart *@
+@*             var donutOptions = new *@
+@*             { *@
+@*                 series = new[] { _availability * 100, _performance * 100, _quality * 100 }, *@
+@*                 chart = new *@
+@*                 { *@
+@*                     type = "donut", *@
+@*                     height = 250 *@
+@*                 }, *@
+@*                 labels = new[] { "Availability", "Performance", "Quality" }, *@
+@*                 responsive = new[] *@
+@*                 { *@
+@*                     new *@
+@*                     { *@
+@*                         breakpoint = 480, *@
+@*                         options = new *@
+@*                         { *@
+@*                             chart = new { width = 200 }, *@
+@*                             legend = new { position = "bottom" } *@
+@*                         } *@
+@*                     } *@
+@*                 } *@
+@*             }; *@
+@* *@
+@*             // Initialize charts using JSRuntime *@
+@*             _barChartRef = await Js.InvokeAsync<IJSObjectReference>("ApexCharts.init", "barChart", barOptions); *@
+@*             _donutChartRef = await Js.InvokeAsync<IJSObjectReference>("ApexCharts.init", "donutChart", donutOptions); *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             Console.Error.WriteLine($"Error updating charts: {ex.Message}"); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private string FormatDateTime(DateTime? dt) *@
+@*     { *@
+@*         return dt?.ToString("HH:mm dd/MM/yyyy") ?? "N/A"; *@
+@*     } *@
+@* *@
+@*     private MudBlazor.Color GetShiftColor(string? shift) *@
+@*     { *@
+@*         return shift?.ToLower() switch *@
+@*         { *@
+@*             "ca 1" => MudBlazor.Color.Success, *@
+@*             "ca 2" => MudBlazor.Color.Info, *@
+@*             "ca 3" => MudBlazor.Color.Warning, *@
+@*             _ => MudBlazor.Color.Default *@
+@*         }; *@
+@*     } *@
+@* *@
+@*     private MudBlazor.Color GetStatusColor(string? status) *@
+@*     { *@
+@*         return status?.ToLower() switch *@
+@*         { *@
+@*             "running" => MudBlazor.Color.Success, *@
+@*             "paused" => MudBlazor.Color.Warning, *@
+@*             "stopped" => MudBlazor.Color.Error, *@
+@*             _ => MudBlazor.Color.Default *@
+@*         }; *@
+@*     } *@
+@* *@
+@*     private MudBlazor.Color GetDowntimeStatusColor(string? status) *@
+@*     { *@
+@*         return status?.ToLower() switch *@
+@*         { *@
+@*             "active" => MudBlazor.Color.Error, *@
+@*             "resolved" => MudBlazor.Color.Success, *@
+@*             _ => MudBlazor.Color.Default *@
+@*         }; *@
+@*     } *@
+@* *@
+@*     public async ValueTask DisposeAsync() *@
+@*     { *@
+@*         if (_barChartRef != null) *@
+@*         { *@
+@*             await _barChartRef.DisposeAsync(); *@
+@*         } *@
+@*         if (_donutChartRef != null) *@
+@*         { *@
+@*             await _donutChartRef.DisposeAsync(); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     #region Model Classes - đổi tên để tránh trùng lặp *@
+@*     private class StationModel *@
+@*     { *@
+@*         public string StationCode { get; set; } = string.Empty; *@
+@*         public string StationName { get; set; } = string.Empty; *@
+@*     } *@
+@* *@
+@*     private class RunningJobModel *@
+@*     { *@
+@*         public string StationName { get; set; } = string.Empty; *@
+@*         public string? ProductCode { get; set; } *@
+@*         public string Shift { get; set; } = string.Empty; *@
+@*         public string JobStatus { get; set; } = string.Empty; *@
+@*         public int? PlanQty { get; set; } *@
+@*         public int ActualQty { get; set; } *@
+@*         public int DefectQty { get; set; } *@
+@*     } *@
+@* *@
+@*     private class WorkingParameterModel *@
+@*     { *@
+@*         public double TaktTime { get; set; } // giây/sản phẩm *@
+@*     } *@
+@* *@
+@*     private class DowntimeEntryModel *@
+@*     { *@
+@*         public string DowntimeCode { get; set; } = string.Empty; *@
+@*         public double LossTime { get; set; } // phút *@
+@*         public DateTime StartTime { get; set; } *@
+@*         public DateTime EndTime { get; set; } *@
+@*         public string Status { get; set; } = string.Empty; *@
+@*     } *@
+@* *@
+@*     private class DowntimeCodeModel *@
+@*     { *@
+@*         public string DowntimeCode { get; set; } = string.Empty; *@
+@*         public string DowntimeName { get; set; } = string.Empty; *@
+@*     } *@
+@* *@
+@*     private class DefectCodeModel *@
+@*     { *@
+@*         public string DefectCode { get; set; } = string.Empty; *@
+@*         public string DefectName { get; set; } = string.Empty; *@
+@*     } *@
+@*     #endregion *@
+@* } *@
 
-<MudMainContent Class="pt-16 px-4">
-    <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
-        📊 OEE Dashboard - 
-        <MudSelect T="string"
-                   @bind-Value="SelectedStation"
-                   Dense="true"
-                   Label="Chọn trạm"
-                   Class="ml-2">
-            @if (StationOptions.Count == 0)
-            {
-                <MudSelectItem T="string" Disabled="true">
-                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" Class="mr-2" />
-                    Đang tải...
-                </MudSelectItem>
-            }
-            else
-            {
-                @foreach (var station in StationOptions)
-                {
-                    <MudSelectItem T="string" Value="@station.StationCode">@station.StationName</MudSelectItem>
-                }
-            }
-        </MudSelect>
+@page "/"
+@inject HttpClient HttpClient
+@using Size = MudBlazor.Size
+
+<MudMainContent Class="pt-5 px-4">
+    <MudText Typo="Typo.h5" Class="mb-4 font-weight-bold text-primary">
+        🏠 Tổng Quan OEE Theo Trạm
     </MudText>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
 
     @if (isLoading)
     {
-        <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" />
-        <MudText Class="mt-2 text-muted">Đang tải dữ liệu...</MudText>
+        <MudProgressCircular Size="Size.Medium" Indeterminate="true" Color="MudBlazor.Color.Primary"/>
+        <MudText Class="mt-2">Đang tải dữ liệu từ máy chủ...</MudText>
     }
-    else if (_errorMessage != null)
+    else if (stationOeeList.Count == 0)
     {
-        <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+        <MudAlert Severity="Severity.Info">Không có dữ liệu OEE.</MudAlert>
     }
     else
     {
-        <MudGrid>
-            <!-- KPI Cards -->
-            <MudItem xs="12" md="4">
-                <MudCard Elevation="5" Class="p-4">
-                    <MudText Typo="Typo.h6" Class="mb-3 text-muted">📈 Chỉ số OEE</MudText>
-                    <MudGrid>
-                        <MudItem xs="12">
-                            <MudText><b>OEE:</b></MudText>
-                            <MudChip T="string" Color="MudBlazor.Color.Primary" Variant="Variant.Filled">@_oeeDisplay</MudChip>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudText><b>Availability:</b></MudText>
-                            <MudChip T="string" Color="MudBlazor.Color.Success" Variant="Variant.Filled">@_availabilityDisplay</MudChip>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudText><b>Performance:</b></MudText>
-                            <MudChip T="string" Color="MudBlazor.Color.Info" Variant="Variant.Filled">@_performanceDisplay</MudChip>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudText><b>Quality:</b></MudText>
-                            <MudChip T="string" Color="MudBlazor.Color.Secondary" Variant="Variant.Filled">@_qualityDisplay</MudChip>
-                        </MudItem>
-                    </MudGrid>
-                </MudCard>
-            </MudItem>
-
-            <!-- Job Details -->
-            <MudItem xs="12" md="4">
-                <MudCard Elevation="5" Class="p-4">
-                    <MudText Typo="Typo.h6" Class="mb-3 text-muted">🚀 Chi tiết Job</MudText>
-                    @if (runningJob != null)
-                    {
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudText><b>📍 Trạm:</b> <MudChip T="string" Color="MudBlazor.Color.Default">@runningJob.StationName</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>📦 Sản phẩm:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@(runningJob.ProductCode ?? "N/A")</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>🕘 Ca:</b> <MudChip T="string" Color="@GetShiftColor(runningJob.Shift)">@runningJob.Shift</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>⚙️ Trạng thái:</b> <MudChip T="string" Color="@GetStatusColor(runningJob.JobStatus)">@runningJob.JobStatus</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>📋 Kế hoạch:</b> <MudChip T="string" Color="MudBlazor.Color.Primary">@runningJob.PlanQty</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>✅ Thực tế:</b> <MudChip T="string" Color="MudBlazor.Color.Success">@runningJob.ActualQty</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>❌ Lỗi:</b> <MudChip T="string" Color="MudBlazor.Color.Error">@runningJob.DefectQty (@(defectCode?.DefectName ?? "N/A"))</MudChip></MudText>
-                            </MudItem>
-                        </MudGrid>
-                    }
-                    else
-                    {
-                        <MudText>Không có job đang chạy.</MudText>
-                    }
-                </MudCard>
-            </MudItem>
-
-            <!-- Downtime Info -->
-            <MudItem xs="12" md="4">
-                <MudCard Elevation="5" Class="p-4">
-                    <MudText Typo="Typo.h6" Class="mb-3 text-muted">🛑 Thông tin Downtime</MudText>
-                    @if (downtimeEntry != null)
-                    {
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudText><b>🕒 Loss Time:</b> <MudChip T="string" Color="MudBlazor.Color.Warning">@downtimeEntry.LossTime</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>📌 Mã Downtime:</b> <MudChip T="string" Color="MudBlazor.Color.Default">@(downtimeCode?.DowntimeName ?? downtimeEntry.DowntimeCode)</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>⏰ Bắt đầu:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@FormatDateTime(downtimeEntry.StartTime)</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>🏁 Kết thúc:</b> <MudChip T="string" Color="MudBlazor.Color.Info">@FormatDateTime(downtimeEntry.EndTime)</MudChip></MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudText><b>🔄 Trạng thái:</b> <MudChip T="string" Color="@GetDowntimeStatusColor(downtimeEntry.Status)">@downtimeEntry.Status</MudChip></MudText>
-                            </MudItem>
-                        </MudGrid>
-                    }
-                    else
-                    {
-                        <MudText>Không có dữ liệu downtime.</MudText>
-                    }
-                </MudCard>
-            </MudItem>
-
-            <!-- Charts -->
-            <MudItem xs="12" md="6">
-                <MudCard Elevation="5" Class="p-4">
-                    <MudText Typo="Typo.h6" Class="mb-3 text-muted">📊 Biểu đồ OEE</MudText>
-                    <div id="barChart" style="min-height: 250px;"></div>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudCard Elevation="5" Class="p-4">
-                    <MudText Typo="Typo.h6" class="mb-3 text-muted">🍩 Phân bổ OEE</MudText>
-                    <div id="donutChart" style="min-height: 250px;"></div>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
+        <MudTable Items="stationOeeList" Hover="true" Elevation="10">
+            <HeaderContent>
+                <MudTh>Trạm</MudTh>
+                <MudTh>Availability</MudTh>
+                <MudTh>Performance</MudTh>
+                <MudTh>Quality</MudTh>
+                <MudTh>OEE (%)</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.StationName</MudTd>
+                <MudTd>@context.Availability.ToString("0.##")%</MudTd>
+                <MudTd>@context.Performance.ToString("0.##")%</MudTd>
+                <MudTd>@context.Quality.ToString("0.##")%</MudTd>
+                <MudTd>@(CalculateOee(context).ToString("0.##"))%</MudTd>
+            </RowTemplate>
+        </MudTable>
     }
 </MudMainContent>
 
 @code {
-    private string? _selectedStation;
-    private string? SelectedStation
-    {
-        get => _selectedStation;
-        set
-        {
-            if (_selectedStation != value)
-            {
-                _selectedStation = value;
-                if (_selectedStation != null)
-                {
-                    _ = LoadDashboardData(_selectedStation);
-                }
-            }
-        }
-    }
-    private List<StationModel> StationOptions = new();
-    private RunningJobModel? runningJob;
-    private WorkingParameterModel? workingParameter;
-    private DowntimeEntryModel? downtimeEntry;
-    private DowntimeCodeModel? downtimeCode;
-    private DefectCodeModel? defectCode;
-    private double _availability;
-    private double _performance;
-    private double _quality;
-    private double _oee;
-    private string _availabilityDisplay = "Không đủ dữ liệu";
-    private string _performanceDisplay = "Không đủ dữ liệu";
-    private string _qualityDisplay = "Không đủ dữ liệu";
-    private string _oeeDisplay = "Không đủ dữ liệu";
-    private string? _errorMessage;
+    private List<StationOeeInfo> stationOeeList = new();
     private bool isLoading = false;
-    private readonly double _totalAvailableTime = 480; // 8 giờ ca làm việc (phút)
-    private IJSObjectReference? _barChartRef;
-    private IJSObjectReference? _donutChartRef;
+    private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadStations();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && !isLoading && !string.IsNullOrEmpty(_selectedStation))
-        {
-            await UpdateCharts();
-        }
-    }
-
-    private async Task LoadStations()
-    {
+        isLoading = true;
         try
         {
-            isLoading = true;
-            _errorMessage = null;
-
-            var response = await HttpClient.GetAsync("https://demo-hwaseung.spiderock.xyz/api/Station/All");
-            if (response.IsSuccessStatusCode)
+            var stations = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
+            if (stations is not null)
             {
-                var json = await response.Content.ReadAsStringAsync();
-                StationOptions = JsonSerializer.Deserialize<List<StationModel>>(json) ?? new List<StationModel>();
+                foreach (var station in stations)
+                {
+                    var availability = await GetAvailability(station.StationCode);
+                    var performance = await GetPerformance(station.StationCode);
+                    var quality = await GetQuality(station.StationCode);
+
+                    stationOeeList.Add(new StationOeeInfo
+                    {
+                        StationCode = station.StationCode,
+                        StationName = station.StationName,
+                        Availability = availability,
+                        Performance = performance,
+                        Quality = quality
+                    });
+                }
             }
             else
             {
-                _errorMessage = $"Lỗi tải danh sách trạm: {response.StatusCode}";
+                errorMessage = "Không thể tải danh sách trạm.";
             }
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Lỗi tải danh sách trạm: {ex.Message}";
+            errorMessage = $"Lỗi khi tải dữ liệu trạm: {ex.Message}";
         }
         finally
         {
             isLoading = false;
-            StateHasChanged();
         }
     }
 
-    private async Task LoadDashboardData(string station)
+    private double CalculateOee(StationOeeInfo info)
+        => (info.Availability * info.Performance * info.Quality) / 10000;
+
+    private async Task<double> GetAvailability(string station)
     {
         try
         {
-            isLoading = true;
-            _errorMessage = null;
-
-            // 1. Lấy job đang chạy
-            var jobResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
-            if (!jobResponse.IsSuccessStatusCode)
+            var res = await HttpClient.GetFromJsonAsync<List<DowntimeEntry>>(
+                $"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}");
+            var totalLoss = res?.Sum(x =>
             {
-                _errorMessage = $"Lỗi tải job: {jobResponse.StatusCode}";
-                return;
-            }
-            var jobJson = await jobResponse.Content.ReadAsStringAsync();
-            runningJob = JsonSerializer.Deserialize<RunningJobModel>(jobJson);
-
-            // 2. Lấy thông số working
-            var productCode = string.IsNullOrEmpty(runningJob.ProductCode) ? "LIGHTBLAZE_A-JS0913" : runningJob.ProductCode;
-            var workingResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/WorkingParameter?station={station}&product={productCode}");
-            if (!workingResponse.IsSuccessStatusCode)
-            {
-                _errorMessage = $"Lỗi tải thông số làm việc: {workingResponse.StatusCode}";
-                return;
-            }
-            var workingJson = await workingResponse.Content.ReadAsStringAsync();
-            workingParameter = JsonSerializer.Deserialize<WorkingParameterModel>(workingJson);
-
-            // 3. Lấy thông tin downtime mới nhất
-            var downtimeResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeCode/All");
-            if (!downtimeResponse.IsSuccessStatusCode)
-            {
-                _errorMessage = $"Lỗi tải downtime: {downtimeResponse.StatusCode}";
-                return;
-            }
-            var downtimeJson = await downtimeResponse.Content.ReadAsStringAsync();
-            downtimeEntry = JsonSerializer.Deserialize<DowntimeEntryModel>(downtimeJson);
-
-            // 4. Lấy thông tin downtime code
-            if (downtimeEntry != null)
-            {
-                var downtimeCodeResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}");
-                if (downtimeCodeResponse.IsSuccessStatusCode)
-                {
-                    var downtimeCodeJson = await downtimeCodeResponse.Content.ReadAsStringAsync();
-                    downtimeCode = JsonSerializer.Deserialize<DowntimeCodeModel>(downtimeCodeJson);
-                }
-            }
-
-            // 5. Lấy defect code (lấy defect code đầu tiên trong danh sách nếu có)
-            if (runningJob?.DefectQty > 0)
-            {
-                var defectResponse = await HttpClient.GetAsync($"https://demo-hwaseung.spiderock.xyz/api/DefectCode/All");
-                if (defectResponse.IsSuccessStatusCode)
-                {
-                    var defectJson = await defectResponse.Content.ReadAsStringAsync();
-                    var defectCodes = JsonSerializer.Deserialize<List<DefectCodeModel>>(defectJson);
-                    defectCode = defectCodes?.FirstOrDefault();
-                }
-            }
-            else
-            {
-                defectCode = null;
-            }
-
-            CalculateKPIs();
-
-            await UpdateCharts();
+                return TimeSpan.TryParse(x.LossTime, out var t) ? t.TotalMinutes : 0;
+            }) ?? 0;
+            return 100 - (totalLoss / 480.0) * 100;
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Lỗi tải dữ liệu dashboard: {ex.Message}";
-        }
-        finally
-        {
-            isLoading = false;
-            await InvokeAsync(StateHasChanged);
+            errorMessage = $"Lỗi tính Availability cho trạm {station}: {ex.Message}";
+            return 0;
         }
     }
 
-    private void CalculateKPIs()
-    {
-        if (runningJob == null || workingParameter == null)
-        {
-            _availabilityDisplay = "Không đủ dữ liệu";
-            _performanceDisplay = "Không đủ dữ liệu";
-            _qualityDisplay = "Không đủ dữ liệu";
-            _oeeDisplay = "Không đủ dữ liệu";
-            return;
-        }
-
-        // Thời gian downtime (loss time) theo phút
-        double lossTimeMinutes = downtimeEntry?.LossTime ?? 0;
-
-        // Availability = (Thời gian khả dụng thực tế) / (Tổng thời gian)
-        double availableTime = _totalAvailableTime - lossTimeMinutes;
-        _availability = availableTime / _totalAvailableTime;
-        _availabilityDisplay = (_availability * 100).ToString("0.##") + "%";
-
-        // Performance = (Thực tế / Sản lượng lý tưởng) * 100%
-        if (runningJob != null && runningJob.ActualQty > 0 && workingParameter.TaktTime > 0)
-        {
-            double operatingTime = availableTime;
-            double idealOutput = (operatingTime * 60) / workingParameter.TaktTime; // TaktTime: giây/sản phẩm
-            if (idealOutput > 0)
-            {
-                _performance = (runningJob.ActualQty / idealOutput);
-                _performanceDisplay = (_performance * 100).ToString("0.##") + "%";
-            }
-            else
-            {
-                _performanceDisplay = "Không đủ dữ liệu";
-            }
-        }
-        else if (runningJob?.ActualQty > 0 && runningJob?.PlanQty > 0)
-        {
-            _performance = (double)runningJob.ActualQty / runningJob.PlanQty.Value;
-            _performanceDisplay = (_performance * 100).ToString("0.##") + "%";
-        }
-
-        else
-        {
-            _performanceDisplay = "Không đủ dữ liệu";
-        }
-
-        // Quality = (Sản lượng tốt / Thực tế) * 100%
-        if (runningJob.ActualQty > 0)
-        {
-            double goodQty = runningJob.ActualQty - runningJob.DefectQty;
-            _quality = goodQty / runningJob.ActualQty;
-            _qualityDisplay = (_quality * 100).ToString("0.##") + "%";
-        }
-        else
-        {
-            _qualityDisplay = "Không đủ dữ liệu";
-        }
-
-        // OEE = Availability * Performance * Quality
-        _oee = _availability * _performance * _quality;
-        _oeeDisplay = (_oee * 100).ToString("0.##") + "%";
-    }
-
-    private async Task UpdateCharts()
+    private async Task<double> GetPerformance(string station)
     {
         try
         {
-            // Bar Chart
-            var barOptions = new
-            {
-                series = new[]
-                {
-                    new { name = "OEE", data = new[] { _oee } },
-                    new { name = "Availability", data = new[] { _availability } },
-                    new { name = "Performance", data = new[] { _performance } },
-                    new { name = "Quality", data = new[] { _quality } }
-                },
-                chart = new
-                {
-                    type = "bar",
-                    height = 250,
-                    toolbar = new { show = false }
-                },
-                plotOptions = new
-                {
-                    bar = new
-                    {
-                        horizontal = false,
-                        columnWidth = "55%",
-                        endingShape = "rounded"
-                    }
-                },
-                dataLabels = new { enabled = false },
-                stroke = new { show = true, width = 2, colors = new[] { "transparent" } },
-                xaxis = new { categories = new[] { "Metrics" } },
-                yaxis = new { title = new { text = "Percentage (%)" } },
-                fill = new { opacity = 1 },
-                tooltip = new
-                {
-                    y = new { formatter = "function(val) { return val + '%' }" }
-                }
-            };
-
-            // Donut Chart
-            var donutOptions = new
-            {
-                series = new[] { _availability, _performance, _quality },
-                chart = new
-                {
-                    type = "donut",
-                    height = 250
-                },
-                labels = new[] { "Availability", "Performance", "Quality" },
-                responsive = new[]
-                {
-                    new
-                    {
-                        breakpoint = 480,
-                        options = new
-                        {
-                            chart = new { width = 200 },
-                            legend = new { position = "bottom" }
-                        }
-                    }
-                }
-            };
-
-            // Initialize charts using JSRuntime
-            _barChartRef = await Js.InvokeAsync<IJSObjectReference>("ApexCharts.init", "barChart", barOptions);
-            _donutChartRef = await Js.InvokeAsync<IJSObjectReference>("ApexCharts.init", "donutChart", donutOptions);
+            var job = await HttpClient.GetFromJsonAsync<RunningJob>(
+                $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
+            return (job != null && job.PlanQty > 0)
+                ? (job.ActualQty / job.PlanQty) * 100
+                : 0;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error updating charts: {ex.Message}");
+            errorMessage = $"Lỗi tính Performance cho trạm {station}: {ex.Message}";
+            return 0;
         }
     }
 
-    private string FormatDateTime(DateTime? dt)
+    private async Task<double> GetQuality(string station)
     {
-        return dt?.ToString("HH:mm dd/MM/yyyy") ?? "N/A";
-    }
-
-    private MudBlazor.Color GetShiftColor(string? shift)
-    {
-        return shift?.ToLower() switch
+        try
         {
-            "ca 1" => MudBlazor.Color.Success,
-            "ca 2" => MudBlazor.Color.Info,
-            "ca 3" => MudBlazor.Color.Warning,
-            _ => MudBlazor.Color.Default
-        };
-    }
-
-    private MudBlazor.Color GetStatusColor(string? status)
-    {
-        return status?.ToLower() switch
-        {
-            "running" => MudBlazor.Color.Success,
-            "paused" => MudBlazor.Color.Warning,
-            "stopped" => MudBlazor.Color.Error,
-            _ => MudBlazor.Color.Default
-        };
-    }
-
-    private MudBlazor.Color GetDowntimeStatusColor(string? status)
-    {
-        return status?.ToLower() switch
-        {
-            "active" => MudBlazor.Color.Error,
-            "resolved" => MudBlazor.Color.Success,
-            _ => MudBlazor.Color.Default
-        };
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_barChartRef != null)
-        {
-            await _barChartRef.DisposeAsync();
+            var job = await HttpClient.GetFromJsonAsync<RunningJob>(
+                $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
+            return (job != null && job.ActualQty > 0)
+                ? ((job.ActualQty - job.DefectQty) / job.ActualQty) * 100
+                : 0;
         }
-        if (_donutChartRef != null)
+        catch (Exception ex)
         {
-            await _donutChartRef.DisposeAsync();
+            errorMessage = $"Lỗi tính Quality cho trạm {station}: {ex.Message}";
+            return 0;
         }
     }
 
-    #region Model Classes - đổi tên để tránh trùng lặp
-    private class StationModel
+    public class StationOeeInfo
+    {
+        public string StationCode { get; set; } = string.Empty;
+        public string StationName { get; set; } = string.Empty;
+        public double Availability { get; set; }
+        public double Performance { get; set; }
+        public double Quality { get; set; }
+    }
+
+    public class DowntimeEntry
+    {
+        public string LossTime { get; set; } = "00:00:00";
+    }
+
+    public class Station
     {
         public string StationCode { get; set; } = string.Empty;
         public string StationName { get; set; } = string.Empty;
     }
 
-    private class RunningJobModel
+    public class RunningJob
     {
-        public string StationName { get; set; } = string.Empty;
-        public string? ProductCode { get; set; }
-        public string Shift { get; set; } = string.Empty;
-        public string JobStatus { get; set; } = string.Empty;
-        public int? PlanQty { get; set; }
-        public int ActualQty { get; set; }
-        public int DefectQty { get; set; }
+        public double PlanQty { get; set; }
+        public double ActualQty { get; set; }
+        public double DefectQty { get; set; }
     }
-
-    private class WorkingParameterModel
-    {
-        public double TaktTime { get; set; } // giây/sản phẩm
-    }
-
-    private class DowntimeEntryModel
-    {
-        public string DowntimeCode { get; set; } = string.Empty;
-        public double LossTime { get; set; } // phút
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public string Status { get; set; } = string.Empty;
-    }
-
-    private class DowntimeCodeModel
-    {
-        public string DowntimeCode { get; set; } = string.Empty;
-        public string DowntimeName { get; set; } = string.Empty;
-    }
-
-    private class DefectCodeModel
-    {
-        public string DefectCode { get; set; } = string.Empty;
-        public string DefectName { get; set; } = string.Empty;
-    }
-    #endregion
 }

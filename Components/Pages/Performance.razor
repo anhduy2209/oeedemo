@@ -194,7 +194,7 @@
                     }
 
                     // Tính Performance
-                    if (runningJob.ActualQty > 0 && workingParameter != null && workingParameter.TaktTime > 0)
+                    if (runningJob.ActualQty > 0 && workingParameter != null && workingParameter.StandardCycle > 0)
                     {
                         // Tính Operating Time
                         double lossTimeMinutes = 0;
@@ -206,7 +206,7 @@
                         double operatingTime = _totalAvailableTime - lossTimeMinutes;
 
                         // Tính Ideal Output
-                        double idealOutput = (operatingTime * 60) / workingParameter.TaktTime; // TaktTime là giây/sản phẩm
+                        double idealOutput = (operatingTime * 60) / workingParameter.StandardCycle; // StandardCycle là giây/sản phẩm
 
                         // Tính Performance
                         _performance = (runningJob.ActualQty / idealOutput) * 100;
@@ -214,7 +214,7 @@
                     }
                     else if (runningJob.PlanQty > 0)
                     {
-                        // Fallback: Sử dụng PlanQty nếu không có TaktTime
+                        // Fallback: Sử dụng PlanQty nếu không có StandardCycle
                         _performance = (runningJob.ActualQty / runningJob.PlanQty) * 100;
                         _performanceDisplay = _performance.ToString("0.##") + "%";
                     }

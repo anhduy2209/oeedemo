@@ -92,9 +92,6 @@ D:\OeeDemo\obj\Debug\net9.0\refint\OeeDemo.dll
 D:\OeeDemo\obj\Debug\net9.0\OeeDemo.pdb
 D:\OeeDemo\obj\Debug\net9.0\OeeDemo.genruntimeconfig.cache
 D:\OeeDemo\obj\Debug\net9.0\ref\OeeDemo.dll
-D:\OeeDemo\obj\Debug\net9.0\scopedcss\Components\Pages\Couter.razor.rz.scp.css
-D:\OeeDemo\obj\Debug\net9.0\compressed\rlqrupj7qf-i8fb3rh7uu.gz
-D:\OeeDemo\obj\Debug\net9.0\compressed\z9o23tr8ih-i8fb3rh7uu.gz
 D:\OeeDemo\bin\Debug\net9.0\Blazor-ApexCharts.dll
 D:\OeeDemo\bin\Debug\net9.0\Microsoft.Extensions.Configuration.dll
 D:\OeeDemo\bin\Debug\net9.0\Microsoft.Extensions.Configuration.Abstractions.dll
@@ -153,3 +150,6 @@ D:\OeeDemo\obj\Debug\net9.0\compressed\1j8oabzfj7-qz6clc5837.gz
 D:\OeeDemo\obj\Debug\net9.0\compressed\0g0tdqq8mx-ody88ncx6z.gz
 D:\OeeDemo\obj\Debug\net9.0\compressed\8to5xwkp6s-pi2fkhqe3i.gz
 D:\OeeDemo\obj\Debug\net9.0\compressed\70cby8uhjp-k00gqgfbe6.gz
+D:\OeeDemo\obj\Debug\net9.0\OeeDemo.sourcelink.json
+D:\OeeDemo\obj\Debug\net9.0\compressed\rlqrupj7qf-k7xsp7yx4t.gz
+D:\OeeDemo\obj\Debug\net9.0\compressed\z9o23tr8ih-k7xsp7yx4t.gz
