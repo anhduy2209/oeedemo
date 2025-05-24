@@ -3,27 +3,35 @@
 
 <MudMainContent Class="pt-16 px-4">
     <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
-        🧪 Quality Information for Station: <strong>@(SelectedStation ?? "Đang tải...")</strong>
+        🧪 Quality Information for Station: <strong>@(_selectedStation ?? "Đang tải...")</strong>
     </MudText>
 
-    <MudSelect T="string"
-               @bind-Value="SelectedStation"
-               Dense="true"
-               Label="Chọn trạm"
-               Class="mb-4"
-               Style="width: 150px;">
-        @if (StationOptions.Count == 0)
-        {
-            <MudSelectItem T="string" Disabled="true">Đang tải...</MudSelectItem>
-        }
-        else
-        {
-            @foreach (var station in StationOptions)
-            {
-                <MudSelectItem Value="@station">@station</MudSelectItem>
-            }
-        }
-    </MudSelect>
+    <MudStack Row="true" Spacing="2" Class="my-4" AlignItems="AlignItems.Center">
+        <MudAutocomplete T="string"
+                         @bind-Value="_selectedStation"
+                         Label="Chọn trạm hoặc tìm kiếm"
+                         Placeholder="Nhập tên hoặc mã trạm"
+                         Dense="true"
+                         Variant="Variant.Outlined"
+                         Class="my-4"
+                         ResetValueOnEmptyText="false"
+                         Clearable="true"
+                         SearchFunc="@SearchStations"
+                         ToStringFunc="@(s => s)"
+                         CoerceText="true"
+                         MinCharacters="0"
+                         MaxItems="Int32.MaxValue"
+                         OpenPopupIcon="Icons.Material.Filled.ArrowDropDown" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="MudBlazor.Color.Tertiary"
+                   OnClick="@SearchClicked"
+                   Disabled="string.IsNullOrWhiteSpace(_selectedStation)"
+                   Style="height: 50px"
+        >
+            🔍 Tìm
+        </MudButton>
+    </MudStack>
 
     @if (!string.IsNullOrEmpty(_errMsg))
     {
@@ -40,8 +48,16 @@
         <MudPaper Elevation="4" Class="p-4 mb-4">
             <MudText Typo="Typo.h5" Class="mb-3">📋 Job & Quality Summary</MudText>
 
+            <MudText><b>Oee:</b>
+                <MudChip T="string" Color="MudBlazor.Color.Tertiary"
+                         Variant="Variant.Filled">@_runningJob.Oee</MudChip>
+            </MudText>
             <MudGrid>
                 <MudItem xs="12" md="6">
+                    <MudText><b>📅 Thời gian tạo:</b>
+                        <MudChip T="string" Color="MudBlazor.Color.Info"
+                                 Variant="Variant.Filled">@_runningJob.CreatedTime.ToString("dd/MM/yyyy HH:mm")</MudChip>
+                    </MudText>
                     <MudText><strong>Station:</strong>
                         <MudChip T="string" Color="MudBlazor.Color.Secondary">@_runningJob.StationName</MudChip>
                     </MudText>
@@ -85,23 +101,6 @@
 
 @code {
     private string? _selectedStation;
-
-    private string? SelectedStation
-    {
-        get => _selectedStation;
-        set
-        {
-            if (_selectedStation != value)
-            {
-                _selectedStation = value;
-                if (_selectedStation != null)
-                {
-                    _ = LoadRunningJob(_selectedStation);
-                }
-            }
-        }
-    }
-
     private List<string> StationOptions = new();
     private RunningJob? _runningJob;
     private double _performance;
@@ -112,10 +111,6 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadStationOptions();
-        if (StationOptions.Any())
-        {
-            SelectedStation = StationOptions.First();
-        }
     }
 
     private async Task LoadStationOptions()
@@ -125,17 +120,29 @@
             var result = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
             if (result is not null && result.Any())
             {
-                StationOptions = result.Select(s => s.StationCode).ToList();
+                StationOptions = result.Select(s => $"{s.StationName} - {s.StationCode}").ToList();
             }
             else
             {
-                StationOptions = new() { "HT09" };
+                StationOptions = new() { "HT09 - HT09" };
             }
         }
         catch
         {
-            StationOptions = new() { "HT09" };
+            StationOptions = new() { "HT09 - HT09" };
             _errMsg = "Không thể tải danh sách trạm từ máy chủ.";
+        }
+    }
+
+    private async Task SearchClicked()
+    {
+        if (!string.IsNullOrWhiteSpace(_selectedStation))
+        {
+            var stationCode = _selectedStation.Split(" - ").LastOrDefault()?.Trim();
+            if (!string.IsNullOrWhiteSpace(stationCode))
+            {
+                await LoadRunningJob(stationCode);
+            }
         }
     }
 
@@ -203,6 +210,14 @@
         _ => MudBlazor.Color.Dark
     };
 
+    private Task<IEnumerable<string>> SearchStations(string value, CancellationToken token)
+    {
+        IEnumerable<string> result = string.IsNullOrWhiteSpace(value)
+            ? StationOptions
+            : StationOptions.Where(s => s.Contains(value, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(result);
+    }
+
     public class Station
     {
         public string StationCode { get; set; } = string.Empty;
@@ -211,6 +226,7 @@
 
     public class RunningJob
     {
+        public required DateTimeOffset CreatedTime { get; set; }
         public required string StationCode { get; init; }
         public required string StationName { get; init; }
         public required string ProductCode { get; init; }
@@ -221,5 +237,4 @@
         public double DefectQty { get; init; }
         public double Oee { get; init; }
     }
-
 }

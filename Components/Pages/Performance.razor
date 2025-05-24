@@ -5,29 +5,55 @@
 <MudMainContent Class="pt-16 px-4">
     <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
         📈 Performance Overview -
-        <MudSelect T="string"
-                   @bind-Value="SelectedStation"
-                   Dense="true"
-                   Label="Chọn trạm"
-                   Class="ml-2 station-select">
-            @if (StationOptions.Count == 0)
-            {
-                <MudSelectItem T="string" Disabled="true">
-                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" Class="mr-2"/>
-                    Đang tải...
-                </MudSelectItem>
-            }
-            else
-            {
-                @foreach (var station in StationOptions)
-                {
-                    <MudSelectItem T="string" Value="@station">
-                        <MudIcon Icon="@Icons.Material.Filled.LocationOn" Class="mr-1 text-secondary"/>
-                        @station
-                    </MudSelectItem>
-                }
-            }
-        </MudSelect>
+        @* <MudSelect T="string" *@
+        @*            @bind-Value="SelectedStationName" *@
+        @*            Dense="true" *@
+        @*            Label="Chọn trạm" *@
+        @*            Class="ml-2 station-select"> *@
+        @*     @if (_stationOptions.Count == 0) *@
+        @*     { *@
+        @*         <MudSelectItem T="string" Disabled="true"> *@
+        @*             <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" Class="mr-2"/> *@
+        @*             Đang tải... *@
+        @*         </MudSelectItem> *@
+        @*     } *@
+        @*     else *@
+        @*     { *@
+        @*         @foreach (var station in _stationOptions) *@
+        @*         { *@
+        @*             <MudSelectItem T="string" Value="@station"> *@
+        @*                 <MudIcon Icon="@Icons.Material.Filled.LocationOn" Class="mr-1 text-secondary"/> *@
+        @*                 @station *@
+        @*             </MudSelectItem> *@
+        @*         } *@
+        @*     } *@
+        @* </MudSelect> *@
+        <MudStack Row="true" Spacing="2" Class="my-4" AlignItems="AlignItems.Center">
+            <MudAutocomplete T="string"
+                             @bind-Value="_selectedStationName"
+                             Label="Chọn trạm hoặc tìm kiếm"
+                             Placeholder="Nhập tên hoặc mã trạm"
+                             Dense="true"
+                             Variant="Variant.Outlined"
+                             ResetValueOnEmptyText="false"
+                             Clearable="true"
+                             SearchFunc="@SearchStations"
+                             ToStringFunc="@(s => s)"
+                             CoerceText="true"
+                             MinCharacters="0"
+                             MaxItems="Int32.MaxValue"
+                             OpenPopupIcon="Icons.Material.Filled.ArrowDropDown" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="MudBlazor.Color.Tertiary"
+                       OnClick="@(() => LoadPerformanceDataAsync(_selectedStationName))"
+                       Disabled="string.IsNullOrWhiteSpace(_selectedStationName)"
+                       Style="height: 50px">
+                🔍 Tìm
+            </MudButton>
+        </MudStack>
+
+
     </MudText>
 
     @if (isLoading)
@@ -96,25 +122,26 @@
 </MudMainContent>
 
 @code {
-    private string? _selectedStation;
+    private string? _selectedStationName;
 
-    private string? SelectedStation
+    private string? SelectedStationName
     {
-        get => _selectedStation;
+        get => _selectedStationName;
         set
         {
-            if (_selectedStation != value)
+            if (_selectedStationName != value)
             {
-                _selectedStation = value;
-                if (_selectedStation != null)
+                _selectedStationName = value;
+                var code = _selectedStationName?.Split(" - ").LastOrDefault()?.Trim();
+                if (!string.IsNullOrWhiteSpace(code))
                 {
-                    _ = LoadRunningJob(_selectedStation);
+                    _ = LoadPerformanceDataAsync(code);
                 }
             }
         }
     }
 
-    private List<string> StationOptions = new();
+    private List<string> _stationOptions = new();
     private RunningJob? runningJob;
     private WorkingParameter? workingParameter;
     private DowntimeEntry? downtimeEntry;
@@ -125,34 +152,34 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadStationOptions();
-        if (StationOptions.Any())
+        await Load_stationOptions();
+        if (_stationOptions.Any())
         {
-            SelectedStation = StationOptions.First();
+            SelectedStationName = _stationOptions.First();
         }
     }
 
-    private async Task LoadStationOptions()
+    private async Task Load_stationOptions()
     {
         try
         {
             var result = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
             if (result is not null && result.Any())
             {
-                StationOptions = result.Select(s => s.StationCode).ToList();
+                _stationOptions = result.Select(s => $"{s.StationName} - {s.StationCode}").ToList();
             }
             else
             {
-                StationOptions = new() { "HT09" };
+                _stationOptions = new() { "Heat Transfer 01 - HT09" };
             }
         }
         catch
         {
-            StationOptions = new() { "HT09" };
+            _stationOptions = new() { "Heat Transfer 01 - HT09" };
         }
     }
 
-    private async Task LoadRunningJob(string station)
+    private async Task LoadPerformanceDataAsync(string station)
     {
         try
         {
@@ -249,6 +276,21 @@
         "Chưa xong" => MudBlazor.Color.Error,
         _ => MudBlazor.Color.Dark
     };
+
+    private Task<IEnumerable<string>> SearchStations(string value, CancellationToken token)
+    {
+        IEnumerable<string> result;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            result = _stationOptions;
+        }
+        else
+        {
+            result = _stationOptions.Where(s => s.Contains(value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return Task.FromResult(result);
+    }
 
     public class Station
     {

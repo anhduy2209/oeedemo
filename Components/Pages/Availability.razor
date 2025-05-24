@@ -6,28 +6,38 @@
 <MudMainContent Class="pt-16 px-4">
     <MudText Typo="Typo.h5" Class="mb-4 text-primary font-weight-bold mud-typography-h5 mud-typography-sm-h6">
         📊 OEE Availability Station: <strong>@(_selectedStation ?? "Đang tải...")</strong>
-        <MudSelect T="string"
-                   @bind-Value="_selectedStation"
-                   Dense="true"
-                   Label="Chọn trạm"
-                   Class="ml-2">
-            @if (_stations == null || _stations.Count == 0)
-            {
-                <MudSelectItem T="string" Disabled="true">Đang tải...</MudSelectItem>
-            }
-            else
-            {
-                @foreach (var station in _stations)
-                {
-                    <MudSelectItem Value="@station.StationCode">@station.StationName</MudSelectItem>
-                }
-            }
-        </MudSelect>
+        <MudStack Row="true" Spacing="2" Class="my-4" AlignItems="AlignItems.Center">
+            <MudAutocomplete T="string"
+                             @bind-Value="_selectedStation"
+                             Label="Chọn trạm hoặc tìm kiếm"
+                             Placeholder="Nhập tên hoặc mã trạm"
+                             Dense="true"
+                             Variant="Variant.Outlined"
+                             Class="my-4"
+                             ResetValueOnEmptyText="false"
+                             Clearable="true"
+                             SearchFunc="@SearchStations"
+                             ToStringFunc="@(s => s)"
+                             CoerceText="true"
+                             MinCharacters="0"
+                             MaxItems="Int32.MaxValue"
+                             OpenPopupIcon="Icons.Material.Filled.ArrowDropDown" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="MudBlazor.Color.Tertiary"
+                       OnClick="@(() => LoadDowntimeDataAsync(_selectedStation))"
+                       Disabled="string.IsNullOrWhiteSpace(_selectedStation)"
+                       Style="height: 50px"
+                       >
+                🔍 Tìm
+            </MudButton>
+        </MudStack>
+
     </MudText>
 
     @if (!string.IsNullOrEmpty(_statusMessage))
     {
-        <MudAlert Severity="Severity.Success" Elevation="1" Dense="true" dismissable="true">
+        <MudAlert Severity="Severity.Success" Elevation="5" Dense="true" dismissable="true">
             @_statusMessage
         </MudAlert>
     }
@@ -43,7 +53,7 @@
     }
     else
     {
-        <MudCard Class="mt-4">
+        <MudCard Class="mt-4" Elevation="5">
             <MudCardContent>
                 <MudText Typo="Typo.subtitle2" Class="mb-3 text-secondary">Chi tiết downtime</MudText>
 
@@ -54,12 +64,14 @@
                                  Color="MudBlazor.Color.Default">@FormatDateTime(_downtimeEntries[0].StartTime)</MudChip>
 
                         <MudText Class="mt-3"><b>Kết thúc:</b></MudText>
-                        <MudChip T="string" Color="MudBlazor.Color.Default">@FormatDateTime(_downtimeEntries[0].EndTime)</MudChip>
+                        <MudChip T="string"
+                                 Color="MudBlazor.Color.Default">@FormatDateTime(_downtimeEntries[0].EndTime)</MudChip>
                     </MudItem>
 
                     <MudItem xs="12" md="6">
                         <MudText><b>Loss Time:</b></MudText>
-                        <MudChip T="string" Color="MudBlazor.Color.Warning">@FormatTotalLossTime(_totalLossTime)</MudChip>
+                        <MudChip T="string"
+                                 Color="MudBlazor.Color.Warning">@FormatTotalLossTime(_totalLossTime)</MudChip>
 
                         <MudText Class="mt-3"><b>Availability:</b></MudText>
                         <MudChip T="string" Color="MudBlazor.Color.Success">@_availability.ToString("0.##")%</MudChip>
@@ -69,8 +81,11 @@
                 <MudDivider Class="my-4"/>
 
                 <MudText><b>Trạng thái:</b></MudText>
-                <MudChip T="string" Color="@GetChipColor(GetStatusText())">@GetStatusText()</MudChip>
-                <MudText Class="ml-2">@GetStatusEmoji()</MudText>
+                <MudChip T="string" Color="@GetChipColor(GetStatusText())">@GetStatusText()
+                    <MudText Class="ml-2">
+                        @GetStatusEmoji()
+                    </MudText>
+                </MudChip>
             </MudCardContent>
         </MudCard>
     }
@@ -94,14 +109,16 @@
             if (_selectedStation != value)
             {
                 _selectedStation = value;
-                if (_selectedStation != null)
+                var code = _selectedStation?.Split(" - ").LastOrDefault()?.Trim();
+                if (!string.IsNullOrWhiteSpace(code))
                 {
-                    _ = LoadDowntimeDataAsync(_selectedStation);
-                    ShowStatus($"Đã tải dữ liệu cho trạm {_selectedStation}");
+                    _ = LoadDowntimeDataAsync(code);
+                    ShowStatus($"Đã tải dữ liệu cho trạm {code}");
                 }
             }
         }
     }
+
 
     private Timer _refreshTimer = null!;
     private string? _statusMessage;
@@ -261,6 +278,27 @@
         return DateTime.TryParse(dateTimeString, out var dt)
             ? dt.ToString("dd/MM/yy HH:mm")
             : dateTimeString;
+    }
+    
+    private Task<IEnumerable<string>> SearchStations(string value, CancellationToken token)
+    {
+        IEnumerable<string> result;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            // ✅ Trả ra toàn bộ theo format "Tên - Mã"
+            result = _stations.Select(x => $"{x.StationName} - {x.StationCode}");
+        }
+        else
+        {
+            result = _stations
+                .Where(x =>
+                    x.StationCode.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                    x.StationName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(x => $"{x.StationName} - {x.StationCode}"); // ✅ giữ format đồng nhất
+        }
+
+        return Task.FromResult(result);
     }
 
     public class DowntimeEntry

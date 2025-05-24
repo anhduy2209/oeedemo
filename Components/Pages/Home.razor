@@ -555,162 +555,341 @@
 @*     #endregion *@
 @* } *@
 
+@* @page "/" *@
+@* @inject HttpClient HttpClient *@
+@* @using Size = MudBlazor.Size *@
+@* *@
+@* <MudMainContent Class="pt-5 px-4"> *@
+@*     <MudText Typo="Typo.h5" Class="mb-4 font-weight-bold text-primary"> *@
+@*         🏠 Tổng Quan OEE Theo Trạm *@
+@*     </MudText> *@
+@* *@
+@*     @if (!string.IsNullOrEmpty(errorMessage)) *@
+@*     { *@
+@*         <MudAlert Severity="Severity.Error">@errorMessage</MudAlert> *@
+@*     } *@
+@* *@
+@*     @if (isLoading) *@
+@*     { *@
+@*         <MudProgressCircular Size="Size.Medium" Indeterminate="true" Color="MudBlazor.Color.Primary"/> *@
+@*         <MudText Class="mt-2">Đang tải dữ liệu từ máy chủ...</MudText> *@
+@*     } *@
+@*     else if (stationOeeList.Count == 0) *@
+@*     { *@
+@*         <MudAlert Severity="Severity.Info">Không có dữ liệu OEE.</MudAlert> *@
+@*     } *@
+@*     else *@
+@*     { *@
+@*         <MudTable Items="stationOeeList" Hover="true" Elevation="10"> *@
+@*             <HeaderContent> *@
+@*                 <MudTh>Trạm</MudTh> *@
+@*                 <MudTh>Availability</MudTh> *@
+@*                 <MudTh>Performance</MudTh> *@
+@*                 <MudTh>Quality</MudTh> *@
+@*                 <MudTh>OEE (%)</MudTh> *@
+@*             </HeaderContent> *@
+@*             <RowTemplate> *@
+@*                 <MudTd>@context.StationName</MudTd> *@
+@*                 <MudTd>@context.Availability.ToString("0.##")%</MudTd> *@
+@*                 <MudTd>@context.Performance.ToString("0.##")%</MudTd> *@
+@*                 <MudTd>@context.Quality.ToString("0.##")%</MudTd> *@
+@*                 <MudTd>@(CalculateOee(context).ToString("0.##"))%</MudTd> *@
+@*             </RowTemplate> *@
+@*         </MudTable> *@
+@*     } *@
+@* </MudMainContent> *@
+@* *@
+@* @code { *@
+@*     private List<StationOeeInfo> stationOeeList = new(); *@
+@*     private bool isLoading = false; *@
+@*     private string? errorMessage; *@
+@* *@
+@*     protected override async Task OnInitializedAsync() *@
+@*     { *@
+@*         isLoading = true; *@
+@*         try *@
+@*         { *@
+@*             var stations = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All"); *@
+@*             if (stations is not null) *@
+@*             { *@
+@*                 foreach (var station in stations) *@
+@*                 { *@
+@*                     var availability = await GetAvailability(station.StationCode); *@
+@*                     var performance = await GetPerformance(station.StationCode); *@
+@*                     var quality = await GetQuality(station.StationCode); *@
+@* *@
+@*                     stationOeeList.Add(new StationOeeInfo *@
+@*                     { *@
+@*                         StationCode = station.StationCode, *@
+@*                         StationName = station.StationName, *@
+@*                         Availability = availability, *@
+@*                         Performance = performance, *@
+@*                         Quality = quality *@
+@*                     }); *@
+@*                 } *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 errorMessage = "Không thể tải danh sách trạm."; *@
+@*             } *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             errorMessage = $"Lỗi khi tải dữ liệu trạm: {ex.Message}"; *@
+@*         } *@
+@*         finally *@
+@*         { *@
+@*             isLoading = false; *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private double CalculateOee(StationOeeInfo info) *@
+@*         => (info.Availability * info.Performance * info.Quality) / 10000; *@
+@* *@
+@*     private async Task<double> GetAvailability(string station) *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             var res = await HttpClient.GetFromJsonAsync<List<DowntimeEntry>>( *@
+@*                 $"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}"); *@
+@*             var totalLoss = res?.Sum(x => *@
+@*             { *@
+@*                 return TimeSpan.TryParse(x.LossTime, out var t) ? t.TotalMinutes : 0; *@
+@*             }) ?? 0; *@
+@*             return 100 - (totalLoss / 480.0) * 100; *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             errorMessage = $"Lỗi tính Availability cho trạm {station}: {ex.Message}"; *@
+@*             return 0; *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private async Task<double> GetPerformance(string station) *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             var job = await HttpClient.GetFromJsonAsync<RunningJob>( *@
+@*                 $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}"); *@
+@*             return (job != null && job.PlanQty > 0) *@
+@*                 ? (job.ActualQty / job.PlanQty) * 100 *@
+@*                 : 0; *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             errorMessage = $"Lỗi tính Performance cho trạm {station}: {ex.Message}"; *@
+@*             return 0; *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private async Task<double> GetQuality(string station) *@
+@*     { *@
+@*         try *@
+@*         { *@
+@*             var job = await HttpClient.GetFromJsonAsync<RunningJob>( *@
+@*                 $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}"); *@
+@*             return (job != null && job.ActualQty > 0) *@
+@*                 ? ((job.ActualQty - job.DefectQty) / job.ActualQty) * 100 *@
+@*                 : 0; *@
+@*         } *@
+@*         catch (Exception ex) *@
+@*         { *@
+@*             errorMessage = $"Lỗi tính Quality cho trạm {station}: {ex.Message}"; *@
+@*             return 0; *@
+@*         } *@
+@*     } *@
+@* *@
+@*     public class StationOeeInfo *@
+@*     { *@
+@*         public string StationCode { get; set; } = string.Empty; *@
+@*         public string StationName { get; set; } = string.Empty; *@
+@*         public double Availability { get; set; } *@
+@*         public double Performance { get; set; } *@
+@*         public double Quality { get; set; } *@
+@*     } *@
+@* *@
+@*     public class DowntimeEntry *@
+@*     { *@
+@*         public string LossTime { get; set; } = "00:00:00"; *@
+@*     } *@
+@* *@
+@*     public class Station *@
+@*     { *@
+@*         public string StationCode { get; set; } = string.Empty; *@
+@*         public string StationName { get; set; } = string.Empty; *@
+@*     } *@
+@* *@
+@*     public class RunningJob *@
+@*     { *@
+@*         public double PlanQty { get; set; } *@
+@*         public double ActualQty { get; set; } *@
+@*         public double DefectQty { get; set; } *@
+@*     } *@
+@* } *@
+
+
 @page "/"
 @inject HttpClient HttpClient
-@using Size = MudBlazor.Size
 
-<MudMainContent Class="pt-5 px-4">
-    <MudText Typo="Typo.h5" Class="mb-4 font-weight-bold text-primary">
-        🏠 Tổng Quan OEE Theo Trạm
-    </MudText>
+<MudStack Row="true" Spacing="2" Class="my-4" AlignItems="AlignItems.Center">
+    <MudAutocomplete T="string"
+                     @bind-Value="_selectedStation"
+                     Label="Chọn trạm hoặc tìm kiếm"
+                     Placeholder="Nhập tên hoặc mã trạm"
+                     Dense="true"
+                     Variant="Variant.Outlined"
+                     Class="my-4"
+                     ResetValueOnEmptyText="false"
+                     Clearable="true"
+                     SearchFunc="@SearchStations"
+                     ToStringFunc="@(s => s)"
+                     CoerceText="true"
+                     MinCharacters="0"
+                     MaxItems="Int32.MaxValue"
+                     OpenPopupIcon="Icons.Material.Filled.ArrowDropDown" />
 
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
-    }
+    <MudButton Variant="Variant.Filled"
+               Color="MudBlazor.Color.Tertiary"
+               OnClick="@(() => LoadDataForStationAsync(_selectedStation))"
+               Disabled="string.IsNullOrWhiteSpace(_selectedStation)"
+               Style="height: 50px">
+        🔍 Tìm
+    </MudButton>
+</MudStack>
 
-    @if (isLoading)
-    {
-        <MudProgressCircular Size="Size.Medium" Indeterminate="true" Color="MudBlazor.Color.Primary"/>
-        <MudText Class="mt-2">Đang tải dữ liệu từ máy chủ...</MudText>
-    }
-    else if (stationOeeList.Count == 0)
-    {
-        <MudAlert Severity="Severity.Info">Không có dữ liệu OEE.</MudAlert>
-    }
-    else
-    {
-        <MudTable Items="stationOeeList" Hover="true" Elevation="10">
-            <HeaderContent>
-                <MudTh>Trạm</MudTh>
-                <MudTh>Availability</MudTh>
-                <MudTh>Performance</MudTh>
-                <MudTh>Quality</MudTh>
-                <MudTh>OEE (%)</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.StationName</MudTd>
-                <MudTd>@context.Availability.ToString("0.##")%</MudTd>
-                <MudTd>@context.Performance.ToString("0.##")%</MudTd>
-                <MudTd>@context.Quality.ToString("0.##")%</MudTd>
-                <MudTd>@(CalculateOee(context).ToString("0.##"))%</MudTd>
-            </RowTemplate>
-        </MudTable>
-    }
-</MudMainContent>
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="MudBlazor.Color.Primary" />
+}
+else if (HasData)
+{
+    <MudPaper Class="p-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudText><b>📍 Trạm:</b> @Job.StationName</MudText>
+                <MudText><b>📦 Mã SP:</b> @Job.ProductCode</MudText>
+                <MudText><b>🕐 Ca:</b> @Job.Shift</MudText>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText><b>📋 Kế hoạch:</b> @Job.PlanQty</MudText>
+                <MudText><b>✅ Thực tế:</b> @Job.ActualQty</MudText>
+                <MudText><b>❌ Lỗi:</b> @Job.DefectQty</MudText>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText><b>⚙️ Availability:</b>
+                    <MudChip T="string" Color="MudBlazor.Color.Warning">@Availability.ToString("0.##")%</MudChip>
+                </MudText>
+                <MudText><b>⚡ Performance:</b>
+                    <MudChip T="string" Color="MudBlazor.Color.Success">@Performance.ToString("0.##")%</MudChip>
+                </MudText>
+                <MudText><b>🎯 Quality:</b>
+                    <MudChip T="string" Color="MudBlazor.Color.Info">@Quality.ToString("0.##")%</MudChip>
+                </MudText>
+                <MudText><b>🔥 OEE:</b>
+                    <MudChip T="string" Color="MudBlazor.Color.Secondary">@Oee.ToString("0.##")%</MudChip>
+                </MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+else
+{
+    <MudText>Không có dữ liệu OEE cho trạm này.</MudText>
+}
 
 @code {
-    private List<StationOeeInfo> stationOeeList = new();
+    private string _selectedStation = string.Empty;
+    private List<string> StationOptions = new();
+    private RunningJob? Job;
+    private List<DowntimeInput>? Downtimes = new();
+
+    private double Availability;
+    private double Performance;
+    private double Quality;
+    private double Oee;
+
     private bool isLoading = false;
-    private string? errorMessage;
+    private bool HasData = false;
 
     protected override async Task OnInitializedAsync()
     {
-        isLoading = true;
+        await LoadStations();
+    }
+
+    private async Task<IEnumerable<string>> SearchStations(string? value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return StationOptions;
+
+        return StationOptions.Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+
+    private async Task LoadStations()
+    {
         try
         {
-            var stations = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
-            if (stations is not null)
-            {
-                foreach (var station in stations)
-                {
-                    var availability = await GetAvailability(station.StationCode);
-                    var performance = await GetPerformance(station.StationCode);
-                    var quality = await GetQuality(station.StationCode);
+            var result = await HttpClient.GetFromJsonAsync<List<Station>>("https://demo-hwaseung.spiderock.xyz/api/Station/All");
+            StationOptions = result?.Select(x => x.StationCode).ToList() ?? new();
+        }
+        catch
+        {
+            StationOptions = new() { "HT09" };
+        }
+    }
 
-                    stationOeeList.Add(new StationOeeInfo
-                    {
-                        StationCode = station.StationCode,
-                        StationName = station.StationName,
-                        Availability = availability,
-                        Performance = performance,
-                        Quality = quality
-                    });
-                }
+    private async Task LoadDataForStationAsync(string station)
+    {
+        if (string.IsNullOrWhiteSpace(station))
+            return;
+
+        isLoading = true;
+        HasData = false;
+        StateHasChanged();
+
+        try
+        {
+            Job = await HttpClient.GetFromJsonAsync<RunningJob?>(
+                $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
+
+            Downtimes = await HttpClient.GetFromJsonAsync<List<DowntimeInput>>(
+                $"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}");
+
+            if (Job != null)
+            {
+                CalculateOee();
+                HasData = true;
             }
             else
             {
-                errorMessage = "Không thể tải danh sách trạm.";
+                HasData = false;
             }
         }
-        catch (Exception ex)
+        catch
         {
-            errorMessage = $"Lỗi khi tải dữ liệu trạm: {ex.Message}";
+            Job = null;
+            HasData = false;
         }
-        finally
-        {
-            isLoading = false;
-        }
+
+        isLoading = false;
+        StateHasChanged();
     }
 
-    private double CalculateOee(StationOeeInfo info)
-        => (info.Availability * info.Performance * info.Quality) / 10000;
-
-    private async Task<double> GetAvailability(string station)
+    private void CalculateOee()
     {
-        try
-        {
-            var res = await HttpClient.GetFromJsonAsync<List<DowntimeEntry>>(
-                $"https://demo-hwaseung.spiderock.xyz/api/DowntimeInput/ByWorkDate?station={station}");
-            var totalLoss = res?.Sum(x =>
-            {
-                return TimeSpan.TryParse(x.LossTime, out var t) ? t.TotalMinutes : 0;
-            }) ?? 0;
-            return 100 - (totalLoss / 480.0) * 100;
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Lỗi tính Availability cho trạm {station}: {ex.Message}";
-            return 0;
-        }
-    }
+        if (Job == null) return;
 
-    private async Task<double> GetPerformance(string station)
-    {
-        try
-        {
-            var job = await HttpClient.GetFromJsonAsync<RunningJob>(
-                $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
-            return (job != null && job.PlanQty > 0)
-                ? (job.ActualQty / job.PlanQty) * 100
-                : 0;
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Lỗi tính Performance cho trạm {station}: {ex.Message}";
-            return 0;
-        }
-    }
+        Performance = (Job.PlanQty > 0) ? (Job.ActualQty / Job.PlanQty) * 100 : 0;
+        Quality = (Job.ActualQty > 0) ? ((Job.ActualQty - Job.DefectQty) / Job.ActualQty) * 100 : 0;
 
-    private async Task<double> GetQuality(string station)
-    {
-        try
-        {
-            var job = await HttpClient.GetFromJsonAsync<RunningJob>(
-                $"https://demo-hwaseung.spiderock.xyz/api/Job/GetRunningJob?station={station}");
-            return (job != null && job.ActualQty > 0)
-                ? ((job.ActualQty - job.DefectQty) / job.ActualQty) * 100
-                : 0;
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Lỗi tính Quality cho trạm {station}: {ex.Message}";
-            return 0;
-        }
-    }
+        // Giả sử thời gian ca là 8 tiếng = 28800 giây
+        var totalShiftSeconds = 8 * 60 * 60;
+        var downtimeSeconds = Downtimes?.Sum(dt => (dt.EndTime - dt.StartTime).TotalSeconds) ?? 0;
+        Availability = totalShiftSeconds > 0
+            ? ((totalShiftSeconds - downtimeSeconds) / totalShiftSeconds) * 100
+            : 0;
 
-    public class StationOeeInfo
-    {
-        public string StationCode { get; set; } = string.Empty;
-        public string StationName { get; set; } = string.Empty;
-        public double Availability { get; set; }
-        public double Performance { get; set; }
-        public double Quality { get; set; }
-    }
-
-    public class DowntimeEntry
-    {
-        public string LossTime { get; set; } = "00:00:00";
+        Oee = (Availability / 100) * (Performance / 100) * (Quality / 100) * 100;
     }
 
     public class Station
@@ -721,8 +900,24 @@
 
     public class RunningJob
     {
+        public string StationCode { get; set; } = string.Empty;
+        public string StationName { get; set; } = string.Empty;
+        public string ProductCode { get; set; } = string.Empty;
+        public string JobStatus { get; set; } = string.Empty;
+        public string Shift { get; set; } = string.Empty;
         public double PlanQty { get; set; }
         public double ActualQty { get; set; }
         public double DefectQty { get; set; }
+        public double Oee { get; set; }
+    }
+
+    public class DowntimeInput
+    {
+        public string StationCode { get; set; } = string.Empty;
+        public string DowntimeCode { get; set; } = string.Empty;
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string LossTime { get; set; } = string.Empty;
     }
 }
